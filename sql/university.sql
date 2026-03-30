@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- 主機: localhost
--- 產生時間： 2026-03-24 10:54:37
+-- 產生時間： 2026-03-30 17:45:53
 -- 伺服器版本: 5.7.17-log
 -- PHP 版本： 5.6.30
 
@@ -32,6 +32,19 @@ CREATE TABLE `course` (
   `CrsUnits` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+--
+-- 資料表的匯出資料 `course`
+--
+
+INSERT INTO `course` (`CourseNo`, `CrsDesc`, `CrsUnits`) VALUES
+('FIN300', 'FUNDAMENTALS OF FINANCE', 4),
+('FIN450', 'PRINCIPLES OF INVESTMENTS', 4),
+('FIN480', 'CORPORATE FINANCE', 4),
+('IS320', 'FUNDAMENTALS OF BUSINESS PROGRAMMING', 4),
+('IS460', 'SYSTEMS ANALYSIS', 4),
+('IS470', 'BUSINESS DATA COMMUNICATIONS', 4),
+('IS480', 'FUNDAMENTALS OF DATABASE MANAGEMENT', 4);
+
 -- --------------------------------------------------------
 
 --
@@ -43,6 +56,49 @@ CREATE TABLE `enrollment` (
   `StdSSN` char(11) NOT NULL,
   `EnrGrade` decimal(3,2) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+--
+-- 資料表的匯出資料 `enrollment`
+--
+
+INSERT INTO `enrollment` (`OfferNo`, `StdSSN`, `EnrGrade`) VALUES
+(1234, '123-45-6789', '3.30'),
+(1234, '234-56-7890', '3.50'),
+(1234, '345-67-8901', '3.20'),
+(1234, '456-78-9012', '3.10'),
+(1234, '567-89-0123', '3.80'),
+(1234, '678-90-1234', '3.40'),
+(4321, '123-45-6789', '3.50'),
+(4321, '124-56-7890', '3.20'),
+(4321, '789-01-2345', '3.50'),
+(4321, '876-54-3210', '3.10'),
+(4321, '890-12-3456', '3.40'),
+(4321, '901-23-4567', '3.10'),
+(5555, '123-45-6789', '3.20'),
+(5555, '124-56-7890', '2.70'),
+(5678, '123-45-6789', '3.20'),
+(5678, '234-56-7890', '2.80'),
+(5678, '345-67-8901', '3.30'),
+(5678, '456-78-9012', '3.40'),
+(5678, '567-89-0123', '2.60'),
+(5679, '123-45-6789', '2.00'),
+(5679, '124-56-7890', '3.70'),
+(5679, '678-90-1234', '3.30'),
+(5679, '789-01-2345', '3.80'),
+(5679, '890-12-3456', '2.90'),
+(5679, '901-23-4567', '3.10'),
+(6666, '234-56-7890', '3.10'),
+(6666, '567-89-0123', '3.60'),
+(7777, '876-54-3210', '3.40'),
+(7777, '890-12-3456', '3.70'),
+(7777, '901-23-4567', '3.40'),
+(9876, '124-56-7890', '3.50'),
+(9876, '234-56-7890', '3.20'),
+(9876, '345-67-8901', '3.20'),
+(9876, '456-78-9012', '3.40'),
+(9876, '567-89-0123', '2.60'),
+(9876, '678-90-1234', '3.30'),
+(9876, '901-23-4567', '4.00');
 
 -- --------------------------------------------------------
 
@@ -64,6 +120,18 @@ CREATE TABLE `faculty` (
   `FacSupervisor` char(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+--
+-- 資料表的匯出資料 `faculty`
+--
+
+INSERT INTO `faculty` (`FacSSN`, `FacFirstName`, `FacLastName`, `FacCity`, `FacState`, `FacZipCode`, `FacHireDate`, `FacDept`, `FacRank`, `FacSalary`, `FacSupervisor`) VALUES
+('098-76-5432', 'LEONARD', 'VINCE', 'SEATTLE', 'WA', '98111-9921', '1995-04-10', 'MS', 'ASST', '35000.00', '654-32-1098'),
+('543-21-0987', 'VICTORIA', 'EMMANUEL', 'BOTHELL', 'WA', '98011-2242', '1996-04-15', 'MS', 'PROF', '120000.00', NULL),
+('654-32-1098', 'LEONARD', 'FIBON', 'SEATTLE', 'WA', '98121-0094', '1994-05-01', 'MS', 'ASSC', '70000.00', '543-21-0987'),
+('765-43-2109', 'NICKI', 'MACON', 'BELLEVUE', 'WA', '98015-9945', '1997-04-11', 'FIN', 'PROF', '65000.00', NULL),
+('876-54-3210', 'CRISTOPHER', 'COLAN', 'SEATTLE', 'WA', '98114-1332', '1999-03-01', 'MS', 'ASST', '40000.00', '654-32-1098'),
+('987-65-4321', 'JULIA', 'MILLS', 'SEATTLE', 'WA', '98114-9954', '2000-03-15', 'FIN', 'ASSC', '75000.00', '765-43-2109');
+
 -- --------------------------------------------------------
 
 --
@@ -80,6 +148,25 @@ CREATE TABLE `offering` (
   `FacSSN` char(11) DEFAULT NULL,
   `OffTime` date DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+--
+-- 資料表的匯出資料 `offering`
+--
+
+INSERT INTO `offering` (`OfferNo`, `CourseNo`, `OffLocation`, `OffDays`, `OffTerm`, `OffYear`, `FacSSN`, `OffTime`) VALUES
+(1111, 'IS320', 'BLM302', 'MW', 'SUMMER', 2006, NULL, '0000-00-00'),
+(1234, 'IS320', 'BLM302', 'MW', 'FALL', 2005, '098-76-5432', '0000-00-00'),
+(2222, 'IS460', 'BLM412', 'TTH', 'SUMMER', 2005, NULL, '0000-00-00'),
+(3333, 'IS320', 'BLM214', 'MW', 'SPRING', 2006, '098-76-5432', '0000-00-00'),
+(4321, 'IS320', 'BLM214', 'TTH', 'FALL', 2005, '098-76-5432', '0000-00-00'),
+(4444, 'IS320', 'BLM302', 'TTH', 'WINTER', 2006, '543-21-0987', '0000-00-00'),
+(5555, 'FIN300', 'BLM207', 'MW', 'WINTER', 2006, '765-43-2109', '0000-00-00'),
+(5678, 'IS480', 'BLM302', 'MW', 'WINTER', 2006, '987-65-4321', '0000-00-00'),
+(5679, 'IS480', 'BLM4', 'TTH', 'SPRING', 2006, '876-54-3210', '0000-00-00'),
+(6666, 'FIN450', 'BLM212', 'TTH', 'WINTER', 2006, '987-65-4321', '0000-00-00'),
+(7777, 'FIN480', 'BLM305', 'MW', 'SPRING', 2006, '765-43-2109', '0000-00-00'),
+(8888, 'IS320', 'BLM405', 'MW', 'SUMMER', 2006, '654-32-1098', '0000-00-00'),
+(9876, 'IS460', 'BLM307', 'TTH', 'SPRING', 2006, '654-32-1098', '0000-00-00');
 
 -- --------------------------------------------------------
 
@@ -98,6 +185,23 @@ CREATE TABLE `student` (
   `StdClass` char(2) DEFAULT NULL,
   `StdGPA` decimal(3,2) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+--
+-- 資料表的匯出資料 `student`
+--
+
+INSERT INTO `student` (`StdSSN`, `StdFirstName`, `StdLastName`, `StdCity`, `StdState`, `StdZip`, `StdMajor`, `StdClass`, `StdGPA`) VALUES
+('123-45-6789', 'HOMER', 'WELLS', 'SEATTLE', 'WA', '98121-1111', 'IS', 'FR', '3.00'),
+('124-56-7890', 'BOB', 'NORBERT', 'BOTHELL', 'WA', '98011-2121', 'FIN', 'JR', '2.70'),
+('234-56-7890', 'CANDY', 'KENDALL', 'TACOMA', 'WA', '99042-3321', 'ACCT', 'JR', '3.50'),
+('345-67-8901', 'WALLY', 'KENDALL', 'SEATTLE', 'WA', '98123-1141', 'IS', 'SR', '2.80'),
+('456-78-9012', 'JOE', 'ESTRADA', 'SEATTLE', 'WA', '98121-2333', 'FIN', 'SR', '3.20'),
+('567-89-0123', 'MARIAH', 'DODGE', 'SEATTLE', 'WA', '98114-0021', 'IS', 'JR', '3.60'),
+('678-90-1234', 'TESS', 'DODGE', 'REDMOND', 'WA', '98116-2344', 'ACCT', 'SO', '3.30'),
+('789-01-2345', 'ROBERTO', 'MORALES', 'SEATTLE', 'WA', '98121-2212', 'FIN', 'JR', '2.50'),
+('876-54-3210', 'CRISTOPHER', 'COLAN', 'SEATTLE', 'WA', '98114-1332', 'IS', 'SR', '4.00'),
+('890-12-3456', 'LUKE', 'BRAZZI', 'SEATTLE', 'WA', '98116-0021', 'IS', 'SR', '2.20'),
+('901-23-4567', 'WILLIAM', 'PILGRIM', 'BOTHELL', 'WA', '98113-1885', 'IS', 'SO', '3.80');
 
 --
 -- 已匯出資料表的索引
