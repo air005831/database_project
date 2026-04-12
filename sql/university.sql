@@ -1,13 +1,15 @@
 -- phpMyAdmin SQL Dump
--- version 4.6.6
+-- version 4.8.3
 -- https://www.phpmyadmin.net/
 --
--- 主機: localhost
--- 產生時間： 2026-03-30 17:45:53
--- 伺服器版本: 5.7.17-log
--- PHP 版本： 5.6.30
+-- 主機: 127.0.0.1
+-- 產生時間： 
+-- 伺服器版本: 10.1.36-MariaDB
+-- PHP 版本： 7.0.32
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+SET AUTOCOMMIT = 0;
+START TRANSACTION;
 SET time_zone = "+00:00";
 
 
@@ -146,7 +148,7 @@ CREATE TABLE `offering` (
   `OffTerm` char(6) NOT NULL,
   `OffYear` int(11) NOT NULL,
   `FacSSN` char(11) DEFAULT NULL,
-  `OffTime` date DEFAULT NULL
+  `OffTime` varchar(10) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 --
@@ -154,19 +156,19 @@ CREATE TABLE `offering` (
 --
 
 INSERT INTO `offering` (`OfferNo`, `CourseNo`, `OffLocation`, `OffDays`, `OffTerm`, `OffYear`, `FacSSN`, `OffTime`) VALUES
-(1111, 'IS320', 'BLM302', 'MW', 'SUMMER', 2006, NULL, '0000-00-00'),
-(1234, 'IS320', 'BLM302', 'MW', 'FALL', 2005, '098-76-5432', '0000-00-00'),
-(2222, 'IS460', 'BLM412', 'TTH', 'SUMMER', 2005, NULL, '0000-00-00'),
-(3333, 'IS320', 'BLM214', 'MW', 'SPRING', 2006, '098-76-5432', '0000-00-00'),
-(4321, 'IS320', 'BLM214', 'TTH', 'FALL', 2005, '098-76-5432', '0000-00-00'),
-(4444, 'IS320', 'BLM302', 'TTH', 'WINTER', 2006, '543-21-0987', '0000-00-00'),
-(5555, 'FIN300', 'BLM207', 'MW', 'WINTER', 2006, '765-43-2109', '0000-00-00'),
-(5678, 'IS480', 'BLM302', 'MW', 'WINTER', 2006, '987-65-4321', '0000-00-00'),
-(5679, 'IS480', 'BLM4', 'TTH', 'SPRING', 2006, '876-54-3210', '0000-00-00'),
-(6666, 'FIN450', 'BLM212', 'TTH', 'WINTER', 2006, '987-65-4321', '0000-00-00'),
-(7777, 'FIN480', 'BLM305', 'MW', 'SPRING', 2006, '765-43-2109', '0000-00-00'),
-(8888, 'IS320', 'BLM405', 'MW', 'SUMMER', 2006, '654-32-1098', '0000-00-00'),
-(9876, 'IS460', 'BLM307', 'TTH', 'SPRING', 2006, '654-32-1098', '0000-00-00');
+(1111, 'IS320', 'BLM302', 'MW', 'SUMMER', 2006, NULL, '10:30AM'),
+(1234, 'IS320', 'BLM302', 'MW', 'FALL', 2005, '098-76-5432', '10:30AM'),
+(2222, 'IS460', 'BLM412', 'TTH', 'SUMMER', 2005, NULL, '1:30PM'),
+(3333, 'IS320', 'BLM214', 'MW', 'SPRING', 2006, '098-76-5432', '8:30AM'),
+(4321, 'IS320', 'BLM214', 'TTH', 'FALL', 2005, '098-76-5432', '3:30PM'),
+(4444, 'IS320', 'BLM302', 'TTH', 'WINTER', 2006, '543-21-0987', '3:30PM'),
+(5555, 'FIN300', 'BLM207', 'MW', 'WINTER', 2006, '765-43-2109', '8:30AM'),
+(5678, 'IS480', 'BLM302', 'MW', 'WINTER', 2006, '987-65-4321', '10:30AM'),
+(5679, 'IS480', 'BLM4', 'TTH', 'SPRING', 2006, '876-54-3210', '123:30PM'),
+(6666, 'FIN450', 'BLM212', 'TTH', 'WINTER', 2006, '987-65-4321', '10:30AM'),
+(7777, 'FIN480', 'BLM305', 'MW', 'SPRING', 2006, '765-43-2109', '1:30PM'),
+(8888, 'IS320', 'BLM405', 'MW', 'SUMMER', 2006, '654-32-1098', '1:30PM'),
+(9876, 'IS460', 'BLM307', 'TTH', 'SPRING', 2006, '654-32-1098', '1:30PM');
 
 -- --------------------------------------------------------
 
@@ -265,6 +267,7 @@ ALTER TABLE `faculty`
 ALTER TABLE `offering`
   ADD CONSTRAINT `offering_ibfk_1` FOREIGN KEY (`CourseNo`) REFERENCES `course` (`CourseNo`),
   ADD CONSTRAINT `offering_ibfk_2` FOREIGN KEY (`FacSSN`) REFERENCES `faculty` (`FacSSN`) ON DELETE SET NULL ON UPDATE CASCADE;
+COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
