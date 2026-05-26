@@ -6,23 +6,14 @@ from .models import (
     FavoriteVenue, Report, Blacklist
 )
 
-class UserAdmin(BaseUserAdmin):
-    list_display = ('phone', 'name', 'birthday', 'credit_point', 'role', 'is_staff')
-    list_filter = ('role', 'is_staff', 'is_superuser', 'is_active')
-    fieldsets = (
-        (None, {'fields': ('phone', 'password')}),
-        ('Personal info', {'fields': ('name', 'birthday', 'credit_point', 'role')}),
-        ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
-        ('Important dates', {'fields': ('last_login', 'date_joined')}),
-    )
-    add_fieldsets = (
-        (None, {
-            'classes': ('wide',),
-            'fields': ('phone', 'name', 'birthday', 'role', 'password'),
-        }),
-    )
+@admin.register(User)
+class UserAdmin(admin.ModelAdmin):
+    list_display = ('phone', 'name', 'birthday', 'credit_point', 'role')
+    list_filter = ('role',)
     search_fields = ('phone', 'name')
     ordering = ('phone',)
+
+    fields = ('phone', 'name', 'password', 'birthday', 'role', 'credit_point')
 
 @admin.register(Sport)
 class SportAdmin(admin.ModelAdmin):
@@ -73,6 +64,3 @@ class ReportAdmin(admin.ModelAdmin):
 class BlacklistAdmin(admin.ModelAdmin):
     list_display = ('user', 'created_at')
     search_fields = ('user__name', 'user__phone')
-
-# Register custom User model
-admin.site.register(User, UserAdmin)
