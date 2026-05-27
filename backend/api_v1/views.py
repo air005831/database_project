@@ -400,12 +400,12 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # 5. Full room check
-        if match.current_players_count >= match.most_players:
+        if MatchParticipant.objects.filter(match=match).count() >= match.most_players:
             return Response({"detail": "This match is already full. Please join the waitlist instead."}, status=status.HTTP_400_BAD_REQUEST)
 
         # 6. Join
         MatchParticipant.objects.create(match=match, user=user)
-        if match.current_players_count >= match.most_players:
+        if MatchParticipant.objects.filter(match=match).count() >= match.most_players:
             match.match_status = 'full'
             match.save()
 
@@ -450,7 +450,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                     content=f"恭喜！您候補的「{match.sport.name}」已成功轉為正式隊員，請準時出席！"
                 )
 
-                if match.current_players_count >= match.most_players:
+                if MatchParticipant.objects.filter(match=match).count() >= match.most_players:
                     match.match_status = 'full'
                 else:
                     match.match_status = 'recruiting'
@@ -526,7 +526,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         if not wait_entry:
             return Response({"detail": "User is not in waitlist."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if match.current_players_count >= match.most_players:
+        if MatchParticipant.objects.filter(match=match).count() >= match.most_players:
             return Response({"detail": "Match is full, cannot promote."}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
@@ -547,7 +547,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 content=f"恭喜！您候補的「{match.sport.name}」已由主揪手動轉為正式隊員，請準時出席！"
             )
 
-            if match.current_players_count >= match.most_players:
+            if MatchParticipant.objects.filter(match=match).count() >= match.most_players:
                 match.match_status = 'full'
                 match.save()
 
@@ -571,8 +571,7 @@ class FavoriteGameViewSet(viewsets.ViewSet):
         serializer = FavoriteGameSerializer(fav)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['delete'])
-    def remove(self, request, pk=None):
+    def destroy(self, request, pk=None):
         fav = FavoriteGame.objects.filter(user=request.user, match_id=pk).first()
         if not fav:
             return Response({"detail": "Favorite not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -597,8 +596,7 @@ class FavoriteVenueViewSet(viewsets.ViewSet):
         serializer = FavoriteVenueSerializer(fav)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['delete'])
-    def remove(self, request, pk=None):
+    def destroy(self, request, pk=None):
         fav = FavoriteVenue.objects.filter(user=request.user, venue_id=pk).first()
         if not fav:
             return Response({"detail": "Favorite not found."}, status=status.HTTP_404_NOT_FOUND)
