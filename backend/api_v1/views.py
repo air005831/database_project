@@ -2,8 +2,37 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from .models import GameMatch, MatchParticipant, UserSportLevel, Blacklist
-from .serializers import GameMatchSerializer
+from .models import (
+    GameMatch, MatchParticipant, UserSportLevel, 
+    Blacklist, User, Sport, Venue, Court
+)
+from .serializers import (
+    GameMatchSerializer, UserSerializer, SportSerializer,
+    VenueSerializer, CourtSerializer, MatchParticipantSerializer
+)
+
+class UserViewSet(viewsets.ModelViewSet):
+    """
+    處理使用者資料的 ViewSet
+    """
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+
+class SportViewSet(viewsets.ModelViewSet):
+    queryset = Sport.objects.all()
+    serializer_class = SportSerializer
+
+class VenueViewSet(viewsets.ModelViewSet):
+    queryset = Venue.objects.all()
+    serializer_class = VenueSerializer
+
+class CourtViewSet(viewsets.ModelViewSet):
+    queryset = Court.objects.all()
+    serializer_class = CourtSerializer
+
+class MatchParticipantViewSet(viewsets.ModelViewSet):
+    queryset = MatchParticipant.objects.all()
+    serializer_class = MatchParticipantSerializer
 
 class GameMatchViewSet(viewsets.ReadOnlyModelViewSet):
     """
@@ -15,7 +44,11 @@ class GameMatchViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
-        queryset = GameMatch.objects.all()
+        queryset = GameMatch.objects.select_related(
+            'sport', 'court__venue'
+        ).prefetch_related(
+            'participants__user'
+        ).all()
         sport_id = self.request.query_params.get('sport_id')
         target_level = self.request.query_params.get('target_level')
         city = self.request.query_params.get('city')

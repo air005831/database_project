@@ -17,21 +17,42 @@ class CourtSerializer(serializers.ModelSerializer):
         model = Court
         fields = '__all__'
 
+class ParticipantUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('id', 'phone', 'name')
+
+class MatchParticipantUserSerializer(serializers.ModelSerializer):
+    id = serializers.ReadOnlyField(source='user.id')
+    phone = serializers.ReadOnlyField(source='user.phone')
+    name = serializers.ReadOnlyField(source='user.name')
+
+    class Meta:
+        model = MatchParticipant
+        fields = ('id', 'phone', 'name')
+
 class GameMatchSerializer(serializers.ModelSerializer):
     sport_name = serializers.CharField(source='sport.name', read_only=True)
     venue_name = serializers.CharField(source='court.venue.name', read_only=True)
     split_price = serializers.ReadOnlyField()
     current_players = serializers.IntegerField(source='current_players_count', read_only=True)
+    participants = MatchParticipantUserSerializer(many=True, read_only=True)
 
     class Meta:
         model = GameMatch
         fields = [
             'id', 'sport_name', 'venue_name', 'least_players', 'most_players',
             'current_players', 'target_level', 'booking_date', 'time_slot',
-            'total_price', 'split_price', 'weather_index', 'match_status'
+            'total_price', 'split_price', 'weather_index', 'match_status',
+            'participants'
         ]
 
 class MatchParticipantSerializer(serializers.ModelSerializer):
     class Meta:
         model = MatchParticipant
+        fields = '__all__'
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
         fields = '__all__'
