@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { MapPin, Clock, ArrowLeft, Timer, DollarSign, Info, CheckCircle2, Users, AlertTriangle, Eye } from 'lucide-react';
+import { MapPin, Clock, ArrowLeft, Timer, DollarSign, Info, CheckCircle2, Users, AlertTriangle, Eye, Bell } from 'lucide-react';
 import '../App.css';
 
 function PartyDetail() {
@@ -13,6 +13,7 @@ function PartyDetail() {
     title: '未知的揪團',
     type: '未知',
     level: '休閒',
+    genderLimit: '不限',
     time: '未知時間',
     location: '未知地點',
     duration: '2 小時',
@@ -63,9 +64,17 @@ function PartyDetail() {
   
   // 新增：場地狀態與檢舉功能狀態
   const [isHostView, setIsHostView] = useState(true); // 測試用
+  const [isTimeApproaching, setIsTimeApproaching] = useState(false); // 測試用：模擬距離活動小於30分
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([
+    { id: 1, text: '你報名的「歡樂衛生麻將局」場地已確認！', time: '10 分鐘前', read: false },
+    { id: 2, text: '系統提醒：主揪更新了揪團注意事項', time: '1 小時前', read: true }
+  ]);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState('未出現');
   const [reportDetail, setReportDetail] = useState('');
+  const [reportingUser, setReportingUser] = useState(null);
+  const [showLevelWarningModal, setShowLevelWarningModal] = useState(false); // 等級不符警告
 
   const getLevelColor = (lv) => {
     switch(lv) {
@@ -82,7 +91,7 @@ function PartyDetail() {
     setTimeout(() => setToastMsg(''), 3000);
   };
 
-  const handleJoin = () => {
+  const confirmJoin = () => {
     const newMember = { 
       name: '我 (使用者)', 
       phone: '0987-654-321', 
@@ -108,6 +117,18 @@ function PartyDetail() {
       setJoinType('waitlist');
       setHasJoined(true);
       showToast('已進入候補名單！有人退出時系統會依序遞補。');
+    }
+  };
+
+  const handleJoin = () => {
+    const mockUserLevel = 'A'; // 假設使用者等級為 A
+    const partyLevel = party.level || '休閒';
+    
+    // 檢查等級是否匹配 (如果不限或休閒則略過，這裡簡單判斷如果不同就跳警告)
+    if (partyLevel !== '休閒' && partyLevel !== '不限' && partyLevel !== mockUserLevel) {
+      setShowLevelWarningModal(true);
+    } else {
+      confirmJoin();
     }
   };
 
@@ -137,10 +158,63 @@ function PartyDetail() {
     <div className="home-container">
       <nav className="navbar">
         <div className="navbar-logo" style={{ cursor: 'pointer' }} onClick={() => navigate('/home')}>不揪ㄛ</div>
-        <div className="navbar-actions" style={{ display: 'flex', gap: '10px' }}>
+        <div className="navbar-actions" style={{ display: 'flex', gap: '10px', position: 'relative' }}>
+          <button className="btn-outline" onClick={() => setIsTimeApproaching(!isTimeApproaching)} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 10px', borderColor: isTimeApproaching ? '#f59e0b' : '#e2e8f0', color: isTimeApproaching ? '#f59e0b' : '#64748b' }}>
+            <Clock size={14} /> {isTimeApproaching ? '活動快開始了' : '距離活動還很久'}
+          </button>
           <button className="btn-outline" onClick={() => setIsHostView(!isHostView)} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 10px' }}>
             <Eye size={14} /> {isHostView ? '主揪視角' : '一般視角'}
           </button>
+          
+          <button 
+            className="btn-outline" 
+            style={{ position: 'relative', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onClick={() => setShowNotifications(!showNotifications)}
+          >
+            <Bell size={18} color="#475569" />
+            {notifications.some(n => !n.read) && (
+              <span style={{ position: 'absolute', top: '-2px', right: '-2px', backgroundColor: '#ef4444', width: '10px', height: '10px', borderRadius: '50%' }}></span>
+            )}
+          </button>
+          
+          {/* 通知中心下拉選單 */}
+          {showNotifications && (
+            <div style={{ position: 'absolute', top: '100%', right: '40px', marginTop: '12px', width: '300px', backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)', zIndex: 1000, overflow: 'hidden', border: '1px solid #e2e8f0', textAlign: 'left' }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', fontWeight: '700', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                通知中心
+                <span 
+                  style={{ fontSize: '12px', color: '#7995a5', cursor: 'pointer', fontWeight: 'normal' }}
+                  onClick={() => setNotifications(notifications.map(n => ({...n, read: true})))}
+                >
+                  全部標示為已讀
+                </span>
+              </div>
+              <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                {notifications.length > 0 ? (
+                  notifications.map(n => (
+                    <div 
+                      key={n.id} 
+                      style={{ padding: '12px 16px', borderBottom: '1px solid #f8fafc', display: 'flex', gap: '12px', cursor: 'pointer', backgroundColor: n.read ? 'white' : '#f0f9ff' }}
+                      onClick={() => {
+                        setNotifications(notifications.map(item => item.id === n.id ? {...item, read: true} : item));
+                      }}
+                    >
+                      <div style={{ width: '8px', display: 'flex', justifyContent: 'center', paddingTop: '6px' }}>
+                        {!n.read && <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#0284c7' }}></div>}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: n.read ? '#64748b' : '#0f172a', lineHeight: '1.4' }}>{n.text}</p>
+                        <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{n.time}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>目前沒有新通知</div>
+                )}
+              </div>
+            </div>
+          )}
+
           <button className="btn-outline" onClick={() => navigate(-1)} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '700' }}>
             <ArrowLeft size={16} /> 返回大廳
           </button>
@@ -156,6 +230,9 @@ function PartyDetail() {
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <span className="party-type" style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: 'white' }}>{party.type}</span>
               <span className="party-level" style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '700' }}>{party.level || '休閒'}</span>
+              {party.genderLimit && party.genderLimit !== '不限' && (
+                <span className="party-level" style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '700' }}>{party.genderLimit}</span>
+              )}
               <span style={{ 
                 backgroundColor: party.venueStatus === 'confirmed' ? '#10b981' : party.venueStatus === 'failed' ? '#ef4444' : '#f59e0b', 
                 color: 'white', border: 'none', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '700' 
@@ -177,9 +254,9 @@ function PartyDetail() {
           </div>
 
           <div style={{ padding: '40px' }}>
-            {isHostView && (
+            {isHostView && isTimeApproaching && (
               <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', marginBottom: '32px' }}>
-                <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#1e293b' }}>👑 主揪管理面板</h3>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#1e293b' }}>👑 是否借到場地？</h3>
                 <div style={{ display: 'flex', gap: '12px' }}>
                   <button className="btn-primary" style={{ flex: 1, backgroundColor: '#10b981', border: 'none' }} onClick={() => { setParty({...party, venueStatus: 'confirmed'}); showToast('已通知所有成員：場地確認成功！'); }}>
                     ✅ 確認借到場地
@@ -249,6 +326,9 @@ function PartyDetail() {
             </div>
 
             {/* 報名參加按鈕 (居中顯示於名單按鈕下方) */}
+            <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', margin: '20px auto 12px auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', backgroundColor: '#f1f5f9', padding: '8px', borderRadius: '8px', maxWidth: '600px' }}>
+              <span style={{ color: '#f59e0b' }}>⚠️</span> 取消截止時間：05/28 20:00，逾期將無法取消報名
+            </div>
             <div style={{ display: 'flex', justifyContent: 'center' }}>
               {hasJoined ? (
                 <button className="btn-action cancel" onClick={handleCancel}>
@@ -322,7 +402,7 @@ function PartyDetail() {
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '320px', textAlign: 'center', position: 'relative' }}>
             {selectedMember.name !== '我 (使用者)' && (
               <button 
-                onClick={() => { setShowReportModal(true); setSelectedMember(null); }}
+                onClick={() => { setShowReportModal(true); setReportingUser(selectedMember.name); setSelectedMember(null); }}
                 style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '13px', fontWeight: '700' }}
               >
                 <AlertTriangle size={16} /> 檢舉
@@ -350,6 +430,29 @@ function PartyDetail() {
         </div>
       )}
 
+      {/* 等級不符警告 Modal */}
+      {showLevelWarningModal && (
+        <div className="modal-overlay" onClick={() => setShowLevelWarningModal(false)} style={{ zIndex: 1200 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '320px', textAlign: 'center' }}>
+            <div style={{ color: '#f59e0b', marginBottom: '16px' }}>
+              <AlertTriangle size={48} style={{ margin: '0 auto' }} />
+            </div>
+            <h3 style={{ marginBottom: '12px', fontSize: '18px' }}>等級不符</h3>
+            <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '24px', lineHeight: '1.5' }}>
+              這個揪團設定的等級是「{party.level}」，但你目前的等級為「A」。<br/><br/>
+              與目前level不符，確定要加入？
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button className="btn-outline" style={{ flex: 1 }} onClick={() => setShowLevelWarningModal(false)}>取消</button>
+              <button className="btn-primary" style={{ flex: 1, backgroundColor: '#f59e0b', border: 'none' }} onClick={() => {
+                setShowLevelWarningModal(false);
+                confirmJoin();
+              }}>確定加入</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 檢舉 Modal */}
       {showReportModal && (
         <div className="modal-overlay" onClick={() => setShowReportModal(false)} style={{ zIndex: 1200 }}>
@@ -366,14 +469,24 @@ function PartyDetail() {
               <div className="form-group">
                 <label className="form-label">檢舉原因</label>
                 <select className="form-input" value={reportReason} onChange={(e) => setReportReason(e.target.value)}>
-                  <option value="未出現">未出現</option>
-                  <option value="沒交錢">沒交錢</option>
-                  <option value="球品不好">球品不好</option>
-                  <option value="言語攻擊">言語攻擊</option>
-                  <option value="態度不佳">態度不佳</option>
-                  <option value="等級不符">等級不符</option>
-                  <option value="騷擾與人身攻擊">騷擾與人身攻擊</option>
-                  <option value="肢體暴力">肢體暴力</option>
+                  <optgroup label="一般原因">
+                    <option value="未出現">未出現</option>
+                    <option value="沒交錢">沒交錢</option>
+                    <option value="球品不好">球品不好</option>
+                    <option value="言語攻擊">言語攻擊</option>
+                    <option value="態度不佳">態度不佳</option>
+                    <option value="等級不符">等級不符</option>
+                    <option value="騷擾與人身攻擊">騷擾與人身攻擊</option>
+                    <option value="肢體暴力">肢體暴力</option>
+                  </optgroup>
+                  {reportingUser === party.participants?.[0]?.name && (
+                    <optgroup label="主揪專屬原因">
+                      <option value="未回報場地">未回報場地</option>
+                      <option value="惡意抬價">惡意抬價</option>
+                      <option value="沒預約場地">沒預約場地</option>
+                      <option value="回報與實際場地不符">回報與實際場地不符</option>
+                    </optgroup>
+                  )}
                 </select>
               </div>
 
@@ -393,6 +506,7 @@ function PartyDetail() {
               <button className="btn-outline" style={{ flex: 1 }} onClick={() => setShowReportModal(false)}>取消</button>
               <button className="login-button" style={{ flex: 1, backgroundColor: '#ef4444' }} onClick={() => {
                 setShowReportModal(false);
+                setReportingUser(null);
                 showToast('檢舉已送出，管理團隊將會盡快審查。');
                 setReportDetail('');
               }}>送出檢舉</button>
