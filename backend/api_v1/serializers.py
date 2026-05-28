@@ -85,7 +85,8 @@ class GameMatchSerializer(serializers.ModelSerializer):
             'current_players', 'target_level', 'booking_date', 'time_slot', 'duration', 'is_free', 'description',
             'total_price', 'split_price', 'deposit_required', 'cancel_deadline',
             'weather', 'air_index', 'is_confirmed', 'booking_status',
-            'match_status', 'participants', 'distance_km', 'facilities'
+            'match_status', 'participants', 'distance_km', 'facilities',
+            'gender_limit', 'venue_status', 'venue_note'
         ]
         read_only_fields = ('match_status', 'weather', 'air_index', 'is_confirmed', 'facilities')
 
@@ -126,6 +127,8 @@ class PenaltyRuleSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class ReportSerializer(serializers.ModelSerializer):
+    game_id = serializers.IntegerField(source='match_id', required=False)
+    reported_user_id = serializers.IntegerField(source='offender_id', required=False)
     reporter_name = serializers.CharField(source='reporter.name', read_only=True)
     offender_name = serializers.CharField(source='offender.name', read_only=True)
     rule_detail = PenaltyRuleSerializer(source='rule', read_only=True)
@@ -135,7 +138,8 @@ class ReportSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'reporter', 'reporter_name', 'offender', 'offender_name',
             'match', 'rule', 'rule_detail', 'admin_note',
-            'reviewed_at', 'reviewed_by', 'status'
+            'reviewed_at', 'reviewed_by', 'status',
+            'game_id', 'reported_user_id', 'reason', 'detail'
         )
         read_only_fields = ('reporter', 'reviewed_at', 'reviewed_by', 'status')
 

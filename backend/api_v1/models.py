@@ -159,6 +159,10 @@ class GameMatch(models.Model):
         ('beginner', 'Beginner'),
         ('casual', 'Casual'),
         ('advanced', 'Advanced'),
+        ('S', 'Elite'),
+        ('A', 'Veteran'),
+        ('B', 'Advanced'),
+        ('C', 'Beginner'),
     )
     BOOKING_STATUS_CHOICES = (
         ('pending', 'Pending'),
@@ -185,6 +189,9 @@ class GameMatch(models.Model):
     duration = models.CharField(max_length=50, default="2 小時")
     is_free = models.BooleanField(default=False)
     description = models.TextField(null=True, blank=True)
+    gender_limit = models.CharField(max_length=20, default='不限')
+    venue_status = models.CharField(max_length=20, default='未確認')
+    venue_note = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property
@@ -281,6 +288,8 @@ class Report(models.Model):
     offender = models.ForeignKey(User, on_delete=models.CASCADE, db_column='offender_id', related_name='reports_received')
     match = models.ForeignKey(GameMatch, on_delete=models.SET_NULL, null=True, db_column='game_id')
     rule = models.ForeignKey(PenaltyRule, on_delete=models.SET_NULL, null=True, blank=True, db_column='rule_id')
+    reason = models.CharField(max_length=100, null=True, blank=True)
+    detail = models.TextField(null=True, blank=True)
     admin_note = models.TextField(blank=True, null=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, db_column='reviewed_by', related_name='reports_reviewed')

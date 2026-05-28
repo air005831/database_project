@@ -28,6 +28,7 @@ urlpatterns = [
     path('admin/broadcast', AdminBroadcastViewSet.as_view({'post': 'create'}), name='admin-broadcast'),
     path('admin/opendata/sync-venues', OpenDataViewSet.as_view({'post': 'sync_venues'}), name='admin-sync-venues'),
     path('opendata/weather', OpenDataViewSet.as_view({'get': 'weather'}), name='opendata-weather'),
+    path('weather/aqi', OpenDataViewSet.as_view({'get': 'weather_aqi'}), name='weather-aqi'),
     path('admin/feedbacks', FeedbackViewSet.as_view({'get': 'list'}), name='admin-feedbacks'),
     path('admin/announcements', AnnouncementViewSet.as_view({'post': 'create'}), name='admin-announcement-create'),
     path('admin/analytics', AdminAnalyticsView.as_view(), name='admin-analytics'),

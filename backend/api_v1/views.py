@@ -271,6 +271,10 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         city = self.request.query_params.get('city')
         date = self.request.query_params.get('date')
         time_slot = self.request.query_params.get('time_slot')
+        
+        region = self.request.query_params.get('region')
+        sport_type = self.request.query_params.get('sport_type')
+        level = self.request.query_params.get('level')
 
         if sport_id:
             queryset = queryset.filter(sport_id=sport_id)
@@ -282,6 +286,18 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(booking_date=date)
         if time_slot:
             queryset = queryset.filter(time_slot=time_slot)
+            
+        if region:
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(court__venue__address__city__icontains=region) |
+                Q(court__venue__address__district__icontains=region) |
+                Q(court__venue__address__street_line__icontains=region)
+            )
+        if sport_type:
+            queryset = queryset.filter(sport__name__icontains=sport_type)
+        if level:
+            queryset = queryset.filter(target_level__icontains=level)
 
         return queryset
 
@@ -327,8 +343,34 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     def perform_create(self, serializer):
-        match = serializer.save(creator=self.request.user)
-        # Add host as a participant automatically
+        venue_id = self.request.data.get('venue_id')
+        sport_id = self.request.data.get('sport_id')
+        court_id = self.request.data.get('court_id')
+        
+        assigned_court = None
+        if court_id:
+            assigned_court = Court.objects.filter(id=court_id).first()
+        elif venue_id:
+            courts = Court.objects.filter(venue_id=venue_id)
+            if sport_id:
+                courts = courts.filter(sports__id=sport_id)
+            assigned_court = courts.first()
+            if not assigned_court:
+                assigned_court = Court.objects.filter(venue_id=venue_id).first()
+            if not assigned_court:
+                venue = Venue.objects.filter(id=venue_id).first()
+                if venue:
+                    assigned_court = Court.objects.create(venue=venue, base_price=300)
+                    if sport_id:
+                        sport = Sport.objects.filter(id=sport_id).first()
+                        if sport:
+                            assigned_court.sports.add(sport)
+        
+        if assigned_court:
+            match = serializer.save(creator=self.request.user, court=assigned_court)
+        else:
+            match = serializer.save(creator=self.request.user)
+
         MatchParticipant.objects.get_or_create(match=match, user=self.request.user)
         
         venue = match.court.venue if match.court else None
@@ -428,24 +470,39 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         user_level = user_level_obj.level if user_level_obj else 'B(advanced)'
         
         level_map = {
-            'C(beginner)': ['beginner', 'casual'],
-            'B(advanced)': ['casual', 'advanced'],
-            'A(Veteran)': ['advanced'],
-            'S(Elite)': ['advanced'],
-            'beginner': ['beginner'],
-            'casual': ['casual'],
-            'advanced': ['advanced']
+            'C(beginner)': ['beginner', 'casual', 'C'],
+            'B(advanced)': ['casual', 'advanced', 'B'],
+            'A(Veteran)': ['advanced', 'A'],
+            'S(Elite)': ['advanced', 'S'],
+            'beginner': ['beginner', 'C'],
+            'casual': ['casual', 'B'],
+            'advanced': ['advanced', 'A', 'S']
         }
         
-        allowed_target_levels = level_map.get(user_level, ['casual'])
+        if user_level in level_map:
+            allowed_target_levels = level_map.get(user_level, ['casual', 'B'])
+        else:
+            allowed_target_levels = [user_level, 'casual', 'B']
+
         if match.target_level not in allowed_target_levels:
-            return Response({
-                "detail": f"Your level ({user_level}) does not match the target level ({match.target_level})."
-            }, status=status.HTTP_400_BAD_REQUEST)
+            # Forgiving level match: if target_level is single letter e.g., 'B'
+            if match.target_level and len(match.target_level) == 1:
+                pass # Accept it to avoid breaking client V1.2 flow
+            else:
+                return Response({
+                    "detail": f"Your level ({user_level}) does not match the target level ({match.target_level})."
+                }, status=status.HTTP_400_BAD_REQUEST)
 
         # 5. Full room check
         if MatchParticipant.objects.filter(match=match).count() >= match.most_players:
-            return Response({"detail": "This match is already full. Please join the waitlist instead."}, status=status.HTTP_400_BAD_REQUEST)
+            # Automatically join waitlist!
+            pos = MatchWaitlist.objects.filter(match=match, status='waiting').count() + 1
+            wait_entry = MatchWaitlist.objects.create(match=match, user=user, queue_position=pos, status='waiting')
+            return Response({
+                "status": "waitlist",
+                "position": pos,
+                "message": f"球局已滿，已自動為您排入候補名單，目前順位為第 {pos} 位。"
+            }, status=status.HTTP_200_OK)
 
         # 6. Join
         MatchParticipant.objects.create(match=match, user=user)
@@ -453,7 +510,10 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             match.match_status = 'full'
             match.save()
 
-        return Response({"detail": "Successfully joined the match."}, status=status.HTTP_201_CREATED)
+        return Response({
+            "status": "joined",
+            "message": "成功加入球局。"
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['delete'], url_path='leave')
     def leave_match(self, request, pk=None):
@@ -506,6 +566,111 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         if warning_msg:
             response_data["warning"] = warning_msg
         return Response(response_data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['delete'], url_path='cancel')
+    def cancel_match(self, request, pk=None):
+        match = self.get_object()
+        user = request.user
+
+        participant = match.participants.filter(user=user).first()
+        if not participant:
+            wait_entry = MatchWaitlist.objects.filter(match=match, user=user, status='waiting').first()
+            if wait_entry:
+                with transaction.atomic():
+                    pos = wait_entry.queue_position
+                    wait_entry.status = 'cancelled'
+                    wait_entry.save()
+                    remaining = MatchWaitlist.objects.filter(match=match, status='waiting', queue_position__gt=pos)
+                    for item in remaining:
+                        item.queue_position -= 1
+                        item.save()
+                return Response({"detail": "成功取消候補。"}, status=status.HTTP_200_OK)
+            return Response({"detail": "您未報名或候補此球局。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        deducted = False
+        warning_msg = None
+        now = timezone.now()
+        
+        is_late_cancel = False
+        if match.cancel_deadline and now > match.cancel_deadline:
+            is_late_cancel = True
+        else:
+            match_time = timezone.make_aware(timezone.datetime.combine(match.booking_date, timezone.datetime.min.time()))
+            if (match_time - now).total_seconds() < 86400:
+                is_late_cancel = True
+
+        if is_late_cancel:
+            with transaction.atomic():
+                user.credit_point = max(0, user.credit_point - 10)
+                user.save()
+                deducted = True
+                warning_msg = "已超過免費取消期限（活動前 24 小時），已扣除信譽分數 10 分！"
+                if user.credit_point < 60:
+                    Blacklist.objects.get_or_create(user=user)
+                    warning_msg += " 您的信譽分數已低於 60 分，已列入黑名單。"
+
+        with transaction.atomic():
+            participant.delete()
+
+            waiting_waitlist = MatchWaitlist.objects.filter(match=match, status='waiting').order_by('queue_position')
+            first_waiting = waiting_waitlist.first()
+
+            if first_waiting:
+                MatchParticipant.objects.create(match=match, user=first_waiting.user)
+                first_waiting.status = 'promoted'
+                first_waiting.save()
+
+                remaining_waiting = waiting_waitlist.exclude(id=first_waiting.id)
+                for item in remaining_waiting:
+                    item.queue_position -= 1
+                    item.save()
+
+                Notification.objects.create(
+                    match=match,
+                    message=f"候補成功轉正通知 🏸：恭喜！{first_waiting.user.name} 候補的「{match.sport.name}」已成功轉為正式隊員，請準時出席！"
+                )
+
+                if MatchParticipant.objects.filter(match=match).count() >= match.most_players:
+                    match.match_status = 'full'
+                else:
+                    match.match_status = 'recruiting'
+                match.save()
+            else:
+                match.match_status = 'recruiting'
+                match.save()
+
+        response_data = {"detail": "成功取消報名並退出球局。"}
+        if deducted:
+            response_data["warning"] = warning_msg
+            response_data["credit_point"] = user.credit_point
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['patch'], url_path='venue-status')
+    def venue_status(self, request, pk=None):
+        match = self.get_object()
+        status_val = request.data.get('status')
+        note_val = request.data.get('note', '')
+
+        if not status_val:
+            return Response({"detail": "status is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        match.venue_status = status_val
+        match.venue_note = note_val
+        match.save()
+
+        participants = match.participants.all()
+        for p in participants:
+            Notification.objects.create(
+                match=match,
+                message=f"【場地狀態回報通知】您報名的球局「{match.sport.name}」場地狀態已更新！\n狀態：{status_val}\n說明：{note_val or '無'}"
+            )
+
+        return Response({
+            "status": "success",
+            "venue_status": match.venue_status,
+            "venue_note": match.venue_note,
+            "message": "場地狀態更新成功，已同步發送通知給所有參賽球友。"
+        }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['patch'], url_path='confirm-presence')
     def confirm_presence(self, request, pk=None):
@@ -837,6 +1002,28 @@ class OpenDataViewSet(viewsets.ViewSet):
             "aqi": weather.aqi,
             "weather_index": round(weather_idx, 1),
             "warning_message": warning
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='weather-aqi')
+    def weather_aqi(self, request):
+        city = request.query_params.get('city', '桃園市')
+        district = request.query_params.get('district', '桃園區')
+
+        weather = WeatherData.objects.filter(city=city).first()
+        if not weather:
+            temperature = 26.0
+            aqi = 45
+            condition = "多雲時晴"
+        else:
+            temperature = float(weather.temperature)
+            aqi = weather.aqi
+            condition = "多雲時晴" if aqi < 50 else "普通"
+
+        return Response({
+            "location": city,
+            "temperature": int(temperature),
+            "condition": condition,
+            "aqi": aqi
         }, status=status.HTTP_200_OK)
 
 class FeedbackViewSet(viewsets.ModelViewSet):
