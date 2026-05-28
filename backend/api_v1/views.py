@@ -730,15 +730,16 @@ class OpenDataViewSet(viewsets.ViewSet):
                 }
             )
 
-            parking, _ = Facility.objects.get_or_create(name="免費車位")
-            shower, _ = Facility.objects.get_or_create(name="熱水淋浴間")
-            vending, _ = Facility.objects.get_or_create(name="自動販賣機")
-            venue.facilities.add(parking, shower, vending)
+            venue.facilities = ["免費車位", "熱水淋浴間", "自動販賣機"]
+            venue.save()
 
-            court1, _ = Court.objects.get_or_create(venue=venue, name="A 羽球場")
+            # Clean and create courts without using missing name column
+            Court.objects.filter(venue=venue).delete()
+            court1 = Court.objects.create(venue=venue)
             court1.sports.add(badminton)
-            court2, _ = Court.objects.get_or_create(venue=venue, name="B 羽球場")
+            court2 = Court.objects.create(venue=venue)
             court2.sports.add(badminton)
+
 
             WeatherData.objects.update_or_create(
                 city="新北市", district="板橋區",

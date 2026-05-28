@@ -40,11 +40,12 @@ class AddressSerializer(serializers.ModelSerializer):
 
 class VenueSerializer(serializers.ModelSerializer):
     address_detail = AddressSerializer(source='address', read_only=True)
-    facilities = serializers.SlugRelatedField(many=True, read_only=True, slug_field='name')
+    facilities = serializers.JSONField(read_only=True)
 
     class Meta:
         model = Venue
         fields = ('id', 'name', 'address', 'address_detail', 'base_price', 'opening_hours', 'types', 'facilities')
+
 
 class CourtSerializer(serializers.ModelSerializer):
     venue_detail = VenueSerializer(source='venue', read_only=True)
