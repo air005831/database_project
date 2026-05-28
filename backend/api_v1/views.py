@@ -13,7 +13,7 @@ from .models import (
     Sport, UserSportLevel, Address, Venue, Court, CourtConflict,
     GameMatch, MatchParticipant, MatchWaitlist, FavoriteGame,
     FavoriteVenue, PenaltyRule, Report, Blacklist, UserAvailability,
-    Notification, WeatherData
+    Notification, WeatherData, Feedback, Announcement
 )
 from .serializers import (
     UserSerializer, UserProfileSerializer, SportSerializer, UserSportLevelSerializer,
@@ -21,7 +21,7 @@ from .serializers import (
     MatchParticipantSerializer, MatchWaitlistSerializer, FavoriteGameSerializer,
     FavoriteVenueSerializer, PenaltyRuleSerializer, ReportSerializer,
     BlacklistSerializer, UserAvailabilitySerializer, NotificationSerializer,
-    WeatherDataSerializer
+    WeatherDataSerializer, FeedbackSerializer, AnnouncementSerializer
 )
 
 User = get_user_model()
@@ -57,6 +57,7 @@ class AuthLoginView(APIView):
         phone = request.data.get('phone')
         name = request.data.get('name')
         birthday = request.data.get('birthday')
+        gender = request.data.get('gender', '男')
 
         if not phone:
             return Response({"detail": "Phone is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -65,7 +66,7 @@ class AuthLoginView(APIView):
         if not user:
             if not name or not birthday:
                 return Response({"detail": "Name and birthday are required for automatic registration."}, status=status.HTTP_400_BAD_REQUEST)
-            user = User.objects.create_user(phone=phone, name=name, birthday=birthday)
+            user = User.objects.create_user(phone=phone, name=name, birthday=birthday, gender=gender)
         
         token, _ = Token.objects.get_or_create(user=user)
         return Response({
@@ -78,9 +79,49 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
 
-    @action(detail=False, methods=['get'], url_path='profile')
+    @action(detail=False, methods=['get', 'put', 'patch'], url_path='profile')
     def profile(self, request):
-        serializer = UserProfileSerializer(request.user)
+        user = request.user
+        if request.method == 'GET':
+            serializer = UserProfileSerializer(user)
+            return Response(serializer.data)
+        
+        # PUT / PATCH
+        name = request.data.get('name')
+        phone = request.data.get('phone')
+        bio = request.data.get('bio')
+        gender = request.data.get('gender')
+        avatar = request.data.get('avatar')
+        levels = request.data.get('levels')
+
+        if name:
+            user.name = name
+        if phone:
+            user.phone = phone
+        if bio:
+            user.bio = bio
+        if gender:
+            user.gender = gender
+        if avatar:
+            user.avatar_url = avatar
+        user.save()
+
+        if levels and isinstance(levels, dict):
+            for sport_name, short_lv in levels.items():
+                lv_map = {
+                    'S': 'S(Elite)',
+                    'A': 'A(Veteran)',
+                    'B': 'B(advanced)',
+                    'C': 'C(beginner)'
+                }
+                full_lv = lv_map.get(short_lv, 'C(beginner)')
+                sport, _ = Sport.objects.get_or_create(name=sport_name)
+                UserSportLevel.objects.update_or_create(
+                    user=user, sport=sport,
+                    defaults={'level': full_lv}
+                )
+
+        serializer = UserProfileSerializer(user)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get', 'put'], url_path='sport-levels')
@@ -165,9 +206,8 @@ class VenueViewSet(viewsets.ModelViewSet):
 
         for match in affected_matches:
             Notification.objects.create(
-                user=match.creator,
-                title="【場館警報】不可抗力建議取消通知",
-                content=f"您預訂的場館【{venue.name}】因不可抗力因素（{reason}）臨時關閉/警告，系統強烈建議您主動取消或修改您的球局，以保障球友權益與安全。"
+                match=match,
+                message=f"【場館警報】不可抗力建議取消通知：您預訂的場館【{venue.name}】因不可抗力因素（{reason}）臨時關閉/警告，系統強烈建議您主動取消或修改您的球局，以保障球友權益與安全。"
             )
 
         return Response({
@@ -201,9 +241,8 @@ class CourtViewSet(viewsets.ModelViewSet):
         
         for game in affected_games:
             Notification.objects.create(
-                user=game.creator,
-                title="場地異常警告通知 ⚠️",
-                content=f"您今天預訂的場地「{court.name}」有球友提報異常（類型：{issue_type}，說明：{description}）。請提前前往確認或進行調整。"
+                match=game,
+                message=f"場地異常警告通知 ⚠️：您今天預訂的場地「{court.name}」有球友提報異常（類型：{issue_type}，說明：{description}）。請提前前往確認或進行調整。"
             )
 
         return Response({
@@ -265,7 +304,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             
             # playability index formula: (5 * rain_probability) + (aqi / 50.0)
             weather_idx = (5 * float(rain_prob)) + (float(aqi) / 50.0)
-            match.weather_index = weather_idx
+            match.weather = round(weather_idx, 1)
             
             # 2. Distance calculation
             dist = None
@@ -294,24 +333,17 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         
         venue = match.court.venue if match.court else None
         if venue:
-            favorited_users = FavoriteVenue.objects.filter(venue=venue).values_list('user', flat=True)
-            for user_id in favorited_users:
-                if user_id != self.request.user.id:
-                    Notification.objects.create(
-                        user_id=user_id,
-                        title="新球局開團通知 🏸",
-                        content=f"您收藏的場館【{venue.name}】有新的「{match.sport.name}」球局發起了，趕快去看看吧！"
-                    )
+            Notification.objects.create(
+                match=match,
+                message=f"新球局開團通知 🏸：您收藏的場館【{venue.name}】有新的「{match.sport.name}」球局發起了，趕快去看看吧！"
+            )
 
     def perform_update(self, serializer):
         match = serializer.save()
-        for participant in match.participants.all():
-            if participant.user != self.request.user:
-                Notification.objects.create(
-                    user=participant.user,
-                    title="球局資訊修改通知 🏸",
-                    content=f"您參加的球局「{match.sport.name}」已被主揪修改了資訊，請查看最新時間與內容。"
-                )
+        Notification.objects.create(
+            match=match,
+            message=f"球局資訊修改通知 🏸：您參加的球局「{match.sport.name}」已被主揪修改了資訊，請查看最新時間與內容。"
+        )
 
     @action(detail=False, methods=['post'], url_path='quick-match')
     def quick_match(self, request):
@@ -393,8 +425,20 @@ class GameMatchViewSet(viewsets.ModelViewSet):
 
         # 4. Level check
         user_level_obj = UserSportLevel.objects.filter(user=user, sport=match.sport).first()
-        user_level = user_level_obj.level if user_level_obj else 'casual'
-        if user_level != match.target_level:
+        user_level = user_level_obj.level if user_level_obj else 'B(advanced)'
+        
+        level_map = {
+            'C(beginner)': ['beginner', 'casual'],
+            'B(advanced)': ['casual', 'advanced'],
+            'A(Veteran)': ['advanced'],
+            'S(Elite)': ['advanced'],
+            'beginner': ['beginner'],
+            'casual': ['casual'],
+            'advanced': ['advanced']
+        }
+        
+        allowed_target_levels = level_map.get(user_level, ['casual'])
+        if match.target_level not in allowed_target_levels:
             return Response({
                 "detail": f"Your level ({user_level}) does not match the target level ({match.target_level})."
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -445,9 +489,8 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                     item.save()
 
                 Notification.objects.create(
-                    user=first_waiting.user,
-                    title="候補成功轉正通知 🏸",
-                    content=f"恭喜！您候補的「{match.sport.name}」已成功轉為正式隊員，請準時出席！"
+                    match=match,
+                    message=f"候補成功轉正通知 🏸：恭喜！{first_waiting.user.name} 候補的「{match.sport.name}」已成功轉為正式隊員，請準時出席！"
                 )
 
                 if MatchParticipant.objects.filter(match=match).count() >= match.most_players:
@@ -542,9 +585,8 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 item.save()
 
             Notification.objects.create(
-                user=wait_entry.user,
-                title="候補成功轉正通知 🏸",
-                content=f"恭喜！您候補的「{match.sport.name}」已由主揪手動轉為正式隊員，請準時出席！"
+                match=match,
+                message=f"候補成功轉正通知 🏸：恭喜！{wait_entry.user.name} 候補的「{match.sport.name}」已由主揪手動轉為正式隊員，請準時出席！"
             )
 
             if MatchParticipant.objects.filter(match=match).count() >= match.most_players:
@@ -626,31 +668,26 @@ class ReportViewSet(viewsets.ModelViewSet):
             report.reviewed_by = request.user
 
             if status_val == 'deducted':
-                rule = PenaltyRule.objects.filter(reason=report.reason).first()
+                rule = report.rule
                 if not rule:
-                    points_map = {'no_show': 20, 'not_paid': 15, 'bad_behavior': 10}
-                    rule = PenaltyRule.objects.create(
-                        reason=report.reason,
-                        points_deducted=points_map.get(report.reason, 10)
-                    )
+                    rule = PenaltyRule.objects.first()
                 
-                report.rule = rule
-                offender = report.offender
-                offender.credit_point = max(0, offender.credit_point - rule.points_deducted)
-                offender.save()
+                if rule:
+                    offender = report.offender
+                    offender.credit_point = max(0, offender.credit_point - rule.points_deducted)
+                    offender.save()
 
-                if offender.credit_point < 60:
-                    if not Blacklist.objects.filter(user=offender, removed_at__isnull=True).exists():
-                        Blacklist.objects.create(
-                            user=offender,
-                            reason=f"Credit score ({offender.credit_point}) dropped below threshold (60) due to review of report #{report.id}."
-                        )
+                    if offender.credit_point < 60:
+                        if not Blacklist.objects.filter(user=offender, removed_at__isnull=True).exists():
+                            Blacklist.objects.create(
+                                user=offender
+                            )
 
             report.save()
 
         return Response(ReportSerializer(report).data, status=status.HTTP_200_OK)
 
-class AdminGameViewSet(viewsets.ReadOnlyModelViewSet):
+class AdminGameViewSet(viewsets.ModelViewSet):
     queryset = GameMatch.objects.all()
     serializer_class = GameMatchSerializer
     permission_classes = [IsAdminRole]
@@ -661,42 +698,58 @@ class AdminGameViewSet(viewsets.ReadOnlyModelViewSet):
             return GameMatch.objects.filter(match_status=status_filter)
         return GameMatch.objects.all()
 
+    @action(detail=True, methods=['patch'], url_path='status')
+    def change_status(self, request, pk=None):
+        match = self.get_object()
+        status_val = request.data.get('status')
+        if status_val:
+            match.match_status = status_val
+            match.save()
+        return Response({"detail": f"Status updated to {match.match_status}"})
+
 class AdminBroadcastViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminRole]
 
     def create(self, request):
         target_group = request.data.get('target_group', 'all')
-        title = request.data.get('title', '系統通知')
         content = request.data.get('content', '')
 
         if not content:
             return Response({"detail": "content is required."}, status=status.HTTP_400_BAD_REQUEST)
 
+        matches = GameMatch.objects.all()
         if target_group == 'organizers':
-            host_ids = GameMatch.objects.values_list('creator_id', flat=True).distinct()
-            users_to_notify = User.objects.filter(id__in=host_ids)
-        else:
-            users_to_notify = User.objects.all()
+            matches = matches.filter(match_status='recruiting')
 
         notifications = []
-        for user in users_to_notify:
-            notifications.append(Notification(user=user, title=title, content=content))
+        for match in matches:
+            notifications.append(Notification(match=match, message=content))
         
         Notification.objects.bulk_create(notifications)
 
-        return Response({"detail": f"Broadcast sent to {len(notifications)} users."}, status=status.HTTP_200_OK)
+        return Response({"detail": f"Broadcast sent to {len(notifications)} matches."}, status=status.HTTP_200_OK)
 
 class NotificationViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def list(self, request):
-        notifs = Notification.objects.filter(user=request.user).order_by('-created_at')
+        from django.db.models import Q
+        user_matches = GameMatch.objects.filter(
+            Q(creator=request.user) | Q(participants__user=request.user)
+        ).values_list('id', flat=True)
+        
+        fav_venues = FavoriteVenue.objects.filter(user=request.user).values_list('venue', flat=True)
+        fav_venue_matches = GameMatch.objects.filter(court__venue__in=fav_venues).values_list('id', flat=True)
+        
+        match_ids = set(list(user_matches) + list(fav_venue_matches))
+        
+        notifs = Notification.objects.filter(match_id__in=match_ids).order_by('-created_at')
         serializer = NotificationSerializer(notifs, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['patch'], url_path='read')
     def read(self, request, pk=None):
-        notif = get_object_or_404(Notification, pk=pk, user=request.user)
+        notif = get_object_or_404(Notification, pk=pk)
         notif.is_read = True
         notif.save()
         return Response({"status": "success", "message": "Notification marked as read."}, status=status.HTTP_200_OK)
@@ -724,20 +777,22 @@ class OpenDataViewSet(viewsets.ViewSet):
                 name="板橋體育館",
                 defaults={
                     "address": addr,
-                    "base_price": 300.00,
                     "opening_hours": {"weekdays": "06:00-22:00", "weekends": "06:00-22:00"},
                     "types": "indoor"
                 }
             )
 
-            venue.facilities = ["免費車位", "熱水淋浴間", "自動販賣機"]
+            venue.facilities.clear()
+            for facility_name in ["免費車位", "熱水淋浴間", "自動販賣機"]:
+                facility, _ = Facility.objects.get_or_create(name=facility_name)
+                venue.facilities.add(facility)
             venue.save()
 
-            # Clean and create courts without using missing name column
+            # Clean and create courts with base_price
             Court.objects.filter(venue=venue).delete()
-            court1 = Court.objects.create(venue=venue)
+            court1 = Court.objects.create(venue=venue, base_price=300)
             court1.sports.add(badminton)
-            court2 = Court.objects.create(venue=venue)
+            court2 = Court.objects.create(venue=venue, base_price=300)
             court2.sports.add(badminton)
 
 
@@ -783,3 +838,57 @@ class OpenDataViewSet(viewsets.ViewSet):
             "weather_index": round(weather_idx, 1),
             "warning_message": warning
         }, status=status.HTTP_200_OK)
+
+class FeedbackViewSet(viewsets.ModelViewSet):
+    queryset = Feedback.objects.all()
+    serializer_class = FeedbackSerializer
+
+    def get_permissions(self):
+        if self.action == 'create':
+            return [permissions.IsAuthenticated()]
+        return [IsAdminRole()]
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+class AnnouncementViewSet(viewsets.ModelViewSet):
+    queryset = Announcement.objects.all().order_by('-created_at')
+    serializer_class = AnnouncementSerializer
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [IsAdminRole()]
+
+class AdminAnalyticsView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def get(self, request):
+        today = timezone.now().date()
+        active_users = User.objects.filter(is_active=True).count()
+        ongoing_games = GameMatch.objects.filter(booking_date=today).count()
+        
+        sports_ratio = {}
+        for s in Sport.objects.all():
+            sports_ratio[s.name] = GameMatch.objects.filter(sport=s).count()
+        
+        activity_trend = [
+            {"date": str(today - timezone.timedelta(days=i)), 
+             "count": GameMatch.objects.filter(booking_date=today - timezone.timedelta(days=i)).count()}
+            for i in range(7)
+        ]
+        
+        return Response({
+            "active_users_today": active_users,
+            "ongoing_games_count": ongoing_games,
+            "sports_ratio": sports_ratio,
+            "activity_trend": activity_trend
+        }, status=status.HTTP_200_OK)
+
+class DemoWeatherView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def patch(self, request):
+        value = request.data.get('value', 50)
+        WeatherData.objects.all().update(rain_probability=float(value)/100.0)
+        return Response({"detail": f"Demo weather suitability updated to {value}%"}, status=status.HTTP_200_OK)

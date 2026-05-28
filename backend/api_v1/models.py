@@ -28,6 +28,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     birthday = models.DateField(db_column='birth_date', null=True, blank=True)
     credit_point = models.IntegerField(default=100)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user')
+    gender = models.CharField(max_length=10, null=True, blank=True)
+    avatar_url = models.CharField(max_length=255, null=True, blank=True)
+    bio = models.TextField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
@@ -62,9 +65,10 @@ class Sport(models.Model):
 
 class UserSportLevel(models.Model):
     LEVEL_CHOICES = (
-        ('beginner', 'Beginner'),
-        ('casual', 'Casual'),
-        ('advanced', 'Advanced'),
+        ('C(beginner)', 'Beginner'),
+        ('B(advanced)', 'Advanced'),
+        ('A(Veteran)', 'Veteran'),
+        ('S(Elite)', 'Elite'),
     )
     user = models.ForeignKey(User, on_delete=models.CASCADE, primary_key=True, db_column='user_id', related_name='sport_levels')
     sport = models.ForeignKey(Sport, on_delete=models.CASCADE, db_column='sport_id')
@@ -97,7 +101,7 @@ class Facility(models.Model):
         return self.name
 
     class Meta:
-        db_table = 'facility'
+        db_table = 'facilities'
 
 class Venue(models.Model):
     VENUE_TYPES = (
@@ -108,10 +112,9 @@ class Venue(models.Model):
     id = models.AutoField(primary_key=True, db_column='venue_id')
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True, db_column='address_id', related_name='venues')
     name = models.CharField(max_length=100)
-    base_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     opening_hours = models.JSONField(null=True, blank=True)
     types = models.CharField(max_length=20, choices=VENUE_TYPES, null=True, blank=True)
-    facilities = models.JSONField(null=True, blank=True)
+    facilities = models.ManyToManyField(Facility, db_table='venue_facilities', related_name='venues')
 
     def __str__(self):
         return self.name
@@ -123,6 +126,7 @@ class Court(models.Model):
     id = models.AutoField(primary_key=True, db_column='court_id')
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, db_column='venue_id', related_name='courts')
     occupied = models.BooleanField(default=False)
+    base_price = models.IntegerField(db_column='base_price', default=0)
     sports = models.ManyToManyField(Sport, db_table='court_sports', related_name='courts')
 
     @property
@@ -174,16 +178,22 @@ class GameMatch(models.Model):
     deposit_required = models.BooleanField(default=False)
     cancel_deadline = models.DateTimeField()
     match_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='recruiting')
-    weather_index = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    weather = models.JSONField(db_column='weather', null=True, blank=True)
     air_index = models.IntegerField(null=True, blank=True)
     is_confirmed = models.BooleanField(default=False)
     booking_status = models.CharField(max_length=20, choices=BOOKING_STATUS_CHOICES, default='pending')
+    duration = models.CharField(max_length=50, default="2 小時")
+    is_free = models.BooleanField(default=False)
+    description = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property
     def split_price(self):
+        import math
+        if self.is_free:
+            return 0
         if self.most_players > 0:
-            return self.total_price / self.most_players
+            return math.ceil(float(self.total_price) / self.most_players)
         return 0
 
     @property
@@ -226,7 +236,6 @@ class MatchWaitlist(models.Model):
 class FavoriteGame(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, primary_key=True, db_column='user_id', related_name='favorite_games')
     match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id')
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'keep'
@@ -268,16 +277,14 @@ class Report(models.Model):
         ('bad_behavior', 'Bad Behavior'),
     )
     id = models.AutoField(primary_key=True, db_column='report_id')
-    reporter = models.ForeignKey(User, on_delete=models.CASCADE, db_column='reporter', related_name='reports_made')
-    offender = models.ForeignKey(User, on_delete=models.CASCADE, db_column='offender', related_name='reports_received')
+    reporter = models.ForeignKey(User, on_delete=models.CASCADE, db_column='reporter_id', related_name='reports_made')
+    offender = models.ForeignKey(User, on_delete=models.CASCADE, db_column='offender_id', related_name='reports_received')
     match = models.ForeignKey(GameMatch, on_delete=models.SET_NULL, null=True, db_column='game_id')
-    reason = models.CharField(max_length=20, choices=REASON_CHOICES)
     rule = models.ForeignKey(PenaltyRule, on_delete=models.SET_NULL, null=True, blank=True, db_column='rule_id')
     admin_note = models.TextField(blank=True, null=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, db_column='reviewed_by', related_name='reports_reviewed')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'reports'
@@ -285,7 +292,6 @@ class Report(models.Model):
 class Blacklist(models.Model):
     id = models.AutoField(primary_key=True, db_column='blacklist_id')
     user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='blacklist_entries')
-    reason = models.TextField()
     added_at = models.DateTimeField(auto_now_add=True)
     removed_at = models.DateTimeField(null=True, blank=True)
 
@@ -310,14 +316,13 @@ class UserAvailability(models.Model):
 
 class Notification(models.Model):
     id = models.AutoField(primary_key=True, db_column='notification_id')
-    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='notifications')
-    title = models.CharField(max_length=100)
-    content = models.TextField()
+    match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', related_name='notifications')
+    message = models.TextField(db_column='message')
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'notifications'
+        db_table = 'notification'
 
 class WeatherData(models.Model):
     city = models.CharField(max_length=50)
@@ -330,3 +335,28 @@ class WeatherData(models.Model):
     class Meta:
         db_table = 'weather_data'
         unique_together = ('city', 'district')
+
+class Feedback(models.Model):
+    TYPE_CHOICES = (
+        ('建議', '建議'),
+        ('錯誤', '錯誤'),
+        ('場地', '場地'),
+        ('其他', '其他'),
+    )
+    id = models.AutoField(primary_key=True, db_column='feedback_id')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='feedbacks')
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'feedbacks'
+
+class Announcement(models.Model):
+    id = models.AutoField(primary_key=True, db_column='announcement_id')
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'announcements'

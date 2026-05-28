@@ -3,7 +3,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AuthLoginView, UserViewSet, SportViewSet, VenueViewSet, CourtViewSet,
     GameMatchViewSet, FavoriteGameViewSet, FavoriteVenueViewSet, ReportViewSet,
-    AdminGameViewSet, AdminBroadcastViewSet, NotificationViewSet, OpenDataViewSet
+    AdminGameViewSet, AdminBroadcastViewSet, NotificationViewSet, OpenDataViewSet,
+    FeedbackViewSet, AnnouncementViewSet, AdminAnalyticsView, DemoWeatherView
 )
 
 router = DefaultRouter()
@@ -17,6 +18,8 @@ router.register('favorites/venues', FavoriteVenueViewSet, basename='favorite-ven
 router.register('reports', ReportViewSet, basename='report')
 router.register('admin/games', AdminGameViewSet, basename='admin-game')
 router.register('notifications', NotificationViewSet, basename='notification')
+router.register('feedback', FeedbackViewSet, basename='feedback')
+router.register('announcements', AnnouncementViewSet, basename='announcement')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -25,4 +28,9 @@ urlpatterns = [
     path('admin/broadcast', AdminBroadcastViewSet.as_view({'post': 'create'}), name='admin-broadcast'),
     path('admin/opendata/sync-venues', OpenDataViewSet.as_view({'post': 'sync_venues'}), name='admin-sync-venues'),
     path('opendata/weather', OpenDataViewSet.as_view({'get': 'weather'}), name='opendata-weather'),
+    path('admin/feedbacks', FeedbackViewSet.as_view({'get': 'list'}), name='admin-feedbacks'),
+    path('admin/announcements', AnnouncementViewSet.as_view({'post': 'create'}), name='admin-announcement-create'),
+    path('admin/analytics', AdminAnalyticsView.as_view(), name='admin-analytics'),
+    path('admin/demo/games/<int:pk>/status', AdminGameViewSet.as_view({'patch': 'change_status'}), name='admin-demo-game-status'),
+    path('admin/demo/weather', DemoWeatherView.as_view(), name='admin-demo-weather'),
 ]

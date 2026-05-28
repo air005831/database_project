@@ -2,7 +2,8 @@ from rest_framework import serializers
 from .models import (
     User, Sport, UserSportLevel, Address, Venue, Court, GameMatch, 
     MatchParticipant, MatchWaitlist, FavoriteGame, FavoriteVenue, 
-    PenaltyRule, Report, Blacklist, UserAvailability, Notification, WeatherData
+    PenaltyRule, Report, Blacklist, UserAvailability, Notification, WeatherData,
+    Feedback, Announcement
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -16,10 +17,14 @@ class UserSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source='id', read_only=True)
     age = serializers.ReadOnlyField()
+    levels = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ('user_id', 'name', 'phone', 'birthday', 'age', 'credit_point', 'role')
+        fields = ('user_id', 'name', 'phone', 'birthday', 'gender', 'avatar_url', 'bio', 'age', 'credit_point', 'role', 'levels')
+
+    def get_levels(self, obj):
+        return {usl.sport.name: usl.level[0] if usl.level else 'C' for usl in obj.sport_levels.all()}
 
 class SportSerializer(serializers.ModelSerializer):
     class Meta:
@@ -40,11 +45,11 @@ class AddressSerializer(serializers.ModelSerializer):
 
 class VenueSerializer(serializers.ModelSerializer):
     address_detail = AddressSerializer(source='address', read_only=True)
-    facilities = serializers.JSONField(read_only=True)
+    facilities = serializers.SlugRelatedField(many=True, read_only=True, slug_field='name')
 
     class Meta:
         model = Venue
-        fields = ('id', 'name', 'address', 'address_detail', 'base_price', 'opening_hours', 'types', 'facilities')
+        fields = ('id', 'name', 'address', 'address_detail', 'opening_hours', 'types', 'facilities')
 
 
 class CourtSerializer(serializers.ModelSerializer):
@@ -53,7 +58,7 @@ class CourtSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Court
-        fields = ('id', 'venue', 'venue_detail', 'name', 'occupied', 'sports')
+        fields = ('id', 'venue', 'venue_detail', 'name', 'occupied', 'base_price', 'sports')
 
 class MatchParticipantUserSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField(source='user.id')
@@ -71,17 +76,23 @@ class GameMatchSerializer(serializers.ModelSerializer):
     current_players = serializers.IntegerField(source='current_players_count', read_only=True)
     participants = MatchParticipantUserSerializer(many=True, read_only=True)
     distance_km = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True, required=False)
+    facilities = serializers.SerializerMethodField()
 
     class Meta:
         model = GameMatch
         fields = [
             'id', 'sport_id', 'sport_name', 'court_id', 'venue_name', 'least_players', 'most_players',
-            'current_players', 'target_level', 'booking_date', 'time_slot',
+            'current_players', 'target_level', 'booking_date', 'time_slot', 'duration', 'is_free', 'description',
             'total_price', 'split_price', 'deposit_required', 'cancel_deadline',
-            'weather_index', 'air_index', 'is_confirmed', 'booking_status',
-            'match_status', 'participants', 'distance_km'
+            'weather', 'air_index', 'is_confirmed', 'booking_status',
+            'match_status', 'participants', 'distance_km', 'facilities'
         ]
-        read_only_fields = ('match_status', 'weather_index', 'air_index', 'is_confirmed')
+        read_only_fields = ('match_status', 'weather', 'air_index', 'is_confirmed', 'facilities')
+
+    def get_facilities(self, obj):
+        if obj.court and obj.court.venue:
+            return [f.name for f in obj.court.venue.facilities.all()]
+        return []
 
 class MatchParticipantSerializer(serializers.ModelSerializer):
     class Meta:
@@ -100,7 +111,7 @@ class FavoriteGameSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FavoriteGame
-        fields = ('id', 'user', 'match', 'match_detail', 'created_at')
+        fields = ('id', 'user', 'match', 'match_detail')
 
 class FavoriteVenueSerializer(serializers.ModelSerializer):
     venue_detail = VenueSerializer(source='venue', read_only=True)
@@ -123,8 +134,8 @@ class ReportSerializer(serializers.ModelSerializer):
         model = Report
         fields = (
             'id', 'reporter', 'reporter_name', 'offender', 'offender_name',
-            'match', 'reason', 'rule', 'rule_detail', 'admin_note',
-            'reviewed_at', 'reviewed_by', 'status', 'created_at'
+            'match', 'rule', 'rule_detail', 'admin_note',
+            'reviewed_at', 'reviewed_by', 'status'
         )
         read_only_fields = ('reporter', 'reviewed_at', 'reviewed_by', 'status')
 
@@ -134,7 +145,7 @@ class BlacklistSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Blacklist
-        fields = ('id', 'user', 'user_phone', 'user_name', 'reason', 'added_at', 'removed_at')
+        fields = ('id', 'user', 'user_phone', 'user_name', 'added_at', 'removed_at')
 
 class UserAvailabilitySerializer(serializers.ModelSerializer):
     class Meta:
@@ -146,12 +157,26 @@ class UserAvailabilitySerializer(serializers.ModelSerializer):
 
 class NotificationSerializer(serializers.ModelSerializer):
     notification_id = serializers.IntegerField(source='id', read_only=True)
+    game_id = serializers.IntegerField(source='match.id', read_only=True)
 
     class Meta:
         model = Notification
-        fields = ('notification_id', 'title', 'content', 'is_read', 'created_at')
+        fields = ('notification_id', 'game_id', 'message', 'is_read', 'created_at')
 
 class WeatherDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = WeatherData
         fields = '__all__'
+
+class FeedbackSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.name', read_only=True)
+
+    class Meta:
+        model = Feedback
+        fields = ('id', 'user', 'user_name', 'type', 'content', 'created_at')
+        read_only_fields = ('user',)
+
+class AnnouncementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Announcement
+        fields = ('id', 'title', 'content', 'created_at')
