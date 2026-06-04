@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { MapPin, Clock, ArrowLeft, Timer, DollarSign, Info, CheckCircle2, Users, AlertTriangle, Eye, Bell } from 'lucide-react';
+import { MapPin, Clock, ArrowLeft, Timer, DollarSign, Info, CheckCircle2, Users, AlertTriangle, Eye, Bell, MessageCircle } from 'lucide-react';
 import '../App.css';
 
 function PartyDetail() {
@@ -56,14 +56,21 @@ function PartyDetail() {
   }, [location.state, defaultParty]);
 
   const [party, setParty] = useState(initialParty);
-  const [hasJoined, setHasJoined] = useState(false);
+  
+  // 判斷當前使用者是否為主揪或已加入
+  const isUserHost = initialParty.participants?.[0]?.name === '我 (主揪)' || initialParty.participants?.[0]?.name === '主揪人';
+  const initialHasJoined = isUserHost || 
+                           initialParty.participants?.some(p => p.name === '我 (使用者)') || 
+                           initialParty.waitlist?.some(p => p.name === '我 (使用者)');
+
+  const [hasJoined, setHasJoined] = useState(initialHasJoined);
   const [joinType, setJoinType] = useState(null);
   const [toastMsg, setToastMsg] = useState('');
   const [showListModal, setShowListModal] = useState(null); // 'participants' | 'waitlist' | null
   const [selectedMember, setSelectedMember] = useState(null); // 新增：被選擇查看資料的成員
   
   // 新增：場地狀態與檢舉功能狀態
-  const [isHostView, setIsHostView] = useState(true); // 測試用
+  const [isHostView, setIsHostView] = useState(isUserHost); // 根據是否為主揪動態切換
   const [isTimeApproaching, setIsTimeApproaching] = useState(false); // 測試用：模擬距離活動小於30分
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([
@@ -74,7 +81,15 @@ function PartyDetail() {
   const [reportReason, setReportReason] = useState('未出現');
   const [reportDetail, setReportDetail] = useState('');
   const [reportingUser, setReportingUser] = useState(null);
+  const [reportedUsers, setReportedUsers] = useState([]); // 新增：紀錄已檢舉的用戶名
   const [showLevelWarningModal, setShowLevelWarningModal] = useState(false); // 等級不符警告
+  
+  // 新增：佈告欄狀態
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [announcements, setAnnouncements] = useState([
+    { id: 1, text: '大家記得帶自己的球具跟水壺喔！', time: '10:00 AM' }
+  ]);
+  const [newAnnouncement, setNewAnnouncement] = useState('');
 
   const getLevelColor = (lv) => {
     switch(lv) {
@@ -326,11 +341,17 @@ function PartyDetail() {
             </div>
 
             {/* 報名參加按鈕 (居中顯示於名單按鈕下方) */}
-            <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', margin: '20px auto 12px auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', backgroundColor: '#f1f5f9', padding: '8px', borderRadius: '8px', maxWidth: '600px' }}>
-              <span style={{ color: '#f59e0b' }}>⚠️</span> 取消截止時間：05/28 20:00，逾期將無法取消報名
-            </div>
+            {!isHostView && (
+              <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', margin: '20px auto 12px auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', backgroundColor: '#f1f5f9', padding: '8px', borderRadius: '8px', maxWidth: '600px' }}>
+                <span style={{ color: '#f59e0b' }}>⚠️</span> 取消截止時間：05/28 20:00，逾期將無法取消報名
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'center' }}>
-              {hasJoined ? (
+              {isHostView ? (
+                <button className="btn-action cancel" style={{ width: '100%' }} onClick={() => { alert('球局已取消！'); navigate('/home'); }}>
+                  取消揪團
+                </button>
+              ) : hasJoined ? (
                 <button className="btn-action cancel" onClick={handleCancel}>
                   取消報名
                 </button>
@@ -350,6 +371,7 @@ function PartyDetail() {
             </div>
           </div>
         </div>
+
       </main>
 
       {/* 底部報名列 */}
@@ -400,13 +422,22 @@ function PartyDetail() {
       {selectedMember && (
         <div className="modal-overlay" onClick={() => setSelectedMember(null)} style={{ zIndex: 1100 }}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '320px', textAlign: 'center', position: 'relative' }}>
-            {selectedMember.name !== '我 (使用者)' && (
-              <button 
-                onClick={() => { setShowReportModal(true); setReportingUser(selectedMember.name); setSelectedMember(null); }}
-                style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '13px', fontWeight: '700' }}
-              >
-                <AlertTriangle size={16} /> 檢舉
-              </button>
+            {(isHostView || party.participants.some(p => p.name === '我 (使用者)')) && selectedMember.name !== '我 (使用者)' && selectedMember.name !== '我 (主揪)' && (
+              reportedUsers.includes(selectedMember.name) ? (
+                <button 
+                  disabled
+                  style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', cursor: 'not-allowed', display: 'flex', alignItems: 'center', gap: '4px', color: '#94a3b8', fontSize: '13px', fontWeight: '700' }}
+                >
+                  <AlertTriangle size={16} /> 已檢舉
+                </button>
+              ) : (
+                <button 
+                  onClick={() => { setShowReportModal(true); setReportingUser(selectedMember.name); setSelectedMember(null); }}
+                  style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '13px', fontWeight: '700' }}
+                >
+                  <AlertTriangle size={16} /> 檢舉
+                </button>
+              )
             )}
             <div className="avatar-placeholder" style={{ width: '80px', height: '80px', fontSize: '32px', marginBottom: '16px', margin: '0 auto 16px auto' }}>
               {selectedMember.name.charAt(0)}
@@ -505,12 +536,97 @@ function PartyDetail() {
             <div style={{ display: 'flex', gap: '12px' }}>
               <button className="btn-outline" style={{ flex: 1 }} onClick={() => setShowReportModal(false)}>取消</button>
               <button className="login-button" style={{ flex: 1, backgroundColor: '#ef4444' }} onClick={() => {
+                if (reportingUser) {
+                  setReportedUsers([...reportedUsers, reportingUser]);
+                }
                 setShowReportModal(false);
                 setReportingUser(null);
                 showToast('檢舉已送出，管理團隊將會盡快審查。');
                 setReportDetail('');
               }}>送出檢舉</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 浮動佈告欄按鈕 (所有人皆可見，但只有主揪能發言) */}
+      <button 
+        onClick={() => setShowAnnouncementModal(true)}
+        style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          width: '56px',
+          height: '56px',
+          borderRadius: '28px',
+          backgroundColor: '#0284c7',
+          color: 'white',
+          border: 'none',
+          boxShadow: '0 4px 12px rgba(2, 132, 199, 0.4)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          cursor: 'pointer',
+          zIndex: 1000
+        }}
+      >
+        <MessageCircle size={28} />
+      </button>
+
+      {/* 佈告欄 Modal */}
+      {showAnnouncementModal && (
+        <div className="modal-overlay" onClick={() => setShowAnnouncementModal(false)} style={{ zIndex: 1200 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px', display: 'flex', flexDirection: 'column', height: '80vh', maxHeight: '600px' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MessageCircle size={20} color="#0284c7" /> 佈告欄
+              </h3>
+              <button className="modal-close" onClick={() => setShowAnnouncementModal(false)}>&times;</button>
+            </div>
+            
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {announcements.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#94a3b8', marginTop: '40px' }}>目前沒有公告</div>
+              ) : (
+                announcements.map(a => (
+                  <div key={a.id} style={{ backgroundColor: '#f8fafc', padding: '12px 16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <p style={{ margin: '0 0 8px 0', fontSize: '14px', lineHeight: '1.5', color: '#334155' }}>{a.text}</p>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'right' }}>{a.time}</div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {isHostView && (
+              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px', display: 'flex', gap: '8px' }}>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  placeholder="輸入要發布的公告..." 
+                  value={newAnnouncement}
+                  onChange={e => setNewAnnouncement(e.target.value)}
+                  style={{ flex: 1, margin: 0 }}
+                  onKeyPress={e => {
+                    if (e.key === 'Enter' && newAnnouncement.trim()) {
+                      setAnnouncements([...announcements, { id: Date.now(), text: newAnnouncement, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }]);
+                      setNewAnnouncement('');
+                    }
+                  }}
+                />
+                <button 
+                  className="login-button" 
+                  style={{ padding: '0 16px', whiteSpace: 'nowrap', width: 'auto' }}
+                  onClick={() => {
+                    if (newAnnouncement.trim()) {
+                      setAnnouncements([...announcements, { id: Date.now(), text: newAnnouncement, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }]);
+                      setNewAnnouncement('');
+                    }
+                  }}
+                >
+                  發布
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -50,24 +50,50 @@ class IsAdminRole(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user and request.user.is_authenticated and request.user.role == 'admin'
 
+class AuthRegisterView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        name = request.data.get('name')
+        email = request.data.get('email')
+        password = request.data.get('password')
+
+        if not name or not email or not password:
+            return Response({"detail": "name, email and password are required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        import re
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            return Response({"detail": "Invalid email format."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if User.objects.filter(email=email).exists():
+            return Response({"detail": "Email already exists."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.create_user(email=email, name=name, password=password)
+            token, _ = Token.objects.get_or_create(user=user)
+            return Response({
+                "token": token.key,
+                "user_id": user.id,
+                "role": user.role
+            }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 class AuthLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        phone = request.data.get('phone')
-        name = request.data.get('name')
-        birthday = request.data.get('birthday')
-        gender = request.data.get('gender', '男')
+        email = request.data.get('email')
+        password = request.data.get('password')
 
-        if not phone:
-            return Response({"detail": "Phone is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not email or not password:
+            return Response({"detail": "Email and password are required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.filter(phone=phone).first()
+        from django.contrib.auth import authenticate
+        user = authenticate(email=email, password=password)
         if not user:
-            if not name or not birthday:
-                return Response({"detail": "Name and birthday are required for automatic registration."}, status=status.HTTP_400_BAD_REQUEST)
-            user = User.objects.create_user(phone=phone, name=name, birthday=birthday, gender=gender)
-        
+            return Response({"detail": "Invalid credentials."}, status=status.HTTP_400_BAD_REQUEST)
+
         token, _ = Token.objects.get_or_create(user=user)
         return Response({
             "token": token.key,
@@ -92,30 +118,66 @@ class UserViewSet(viewsets.ModelViewSet):
         bio = request.data.get('bio')
         gender = request.data.get('gender')
         avatar = request.data.get('avatar')
+        birthday = request.data.get('birthday')
         levels = request.data.get('levels')
+
+        # 首次建立檔案校驗：phone 與 levels 為必填
+        is_first_setup = not user.phone
+        if is_first_setup:
+            if not phone:
+                return Response({"detail": "Phone is required for initial profile setup."}, status=status.HTTP_400_BAD_REQUEST)
+            if not birthday:
+                return Response({"detail": "Birthday is required for initial profile setup."}, status=status.HTTP_400_BAD_REQUEST)
+            if not gender:
+                return Response({"detail": "Gender is required for initial profile setup."}, status=status.HTTP_400_BAD_REQUEST)
+            if not levels:
+                return Response({"detail": "Sport levels are required for initial profile setup."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 手機號碼格式驗證
+        if phone:
+            import re
+            if not re.match(r"^09\d{8}$", phone):
+                return Response({"detail": "手機號碼格式不正確，必須是 09 開頭且為 10 碼數字。"}, status=status.HTTP_400_BAD_REQUEST)
 
         if name:
             user.name = name
         if phone:
             user.phone = phone
-        if bio:
+        if bio is not None:
             user.bio = bio
-        if gender:
-            user.gender = gender
         if avatar:
             user.avatar_url = avatar
+
+        # birthday 與 gender 僅能在首次建立檔案時填寫，後續不可修改
+        if birthday:
+            if not user.birthday:
+                user.birthday = birthday
+            elif str(user.birthday) != str(birthday):
+                # 忽略修改
+                pass
+        
+        if gender:
+            if not user.gender:
+                if gender not in ['男', '女']:
+                    return Response({"detail": "性別必須為 '男' 或 '女'。"}, status=status.HTTP_400_BAD_REQUEST)
+                user.gender = gender
+            elif user.gender != gender:
+                # 忽略修改
+                pass
+
         user.save()
 
         if levels and isinstance(levels, dict):
             for sport_name, short_lv in levels.items():
+                db_sport_name = "羽毛球" if sport_name == "羽球" else sport_name
                 lv_map = {
-                    'S': 'S(Elite)',
-                    'A': 'A(Veteran)',
-                    'B': 'B(advanced)',
-                    'C': 'C(beginner)'
+                    'S': 'S(菁英)',
+                    'A': 'A(高手)',
+                    'B': 'B(熟練)',
+                    'C': 'C(初學者)'
                 }
-                full_lv = lv_map.get(short_lv, 'C(beginner)')
-                sport, _ = Sport.objects.get_or_create(name=sport_name)
+                full_lv = lv_map.get(short_lv, 'C(初學者)')
+                sport, _ = Sport.objects.get_or_create(name=db_sport_name)
                 UserSportLevel.objects.update_or_create(
                     user=user, sport=sport,
                     defaults={'level': full_lv}
@@ -180,6 +242,19 @@ class VenueViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return [IsAdminRole()]
 
+    def destroy(self, request, *args, **kwargs):
+        venue = self.get_object()
+        active_matches = GameMatch.objects.filter(
+            court__venue=venue,
+            match_status__in=['recruiting', 'full']
+        )
+        if active_matches.exists():
+            return Response(
+                {"detail": "無法刪除此場地：仍有招募中或進行中的球局正在使用該場地。"},
+                status=status.HTTP_409_CONFLICT
+            )
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=['patch'], url_path='approve')
     def approve(self, request, pk=None):
         remarks = request.data.get('remarks', '')
@@ -206,9 +281,17 @@ class VenueViewSet(viewsets.ModelViewSet):
 
         for match in affected_matches:
             Notification.objects.create(
+                user=match.creator,
                 match=match,
                 message=f"【場館警報】不可抗力建議取消通知：您預訂的場館【{venue.name}】因不可抗力因素（{reason}）臨時關閉/警告，系統強烈建議您主動取消或修改您的球局，以保障球友權益與安全。"
             )
+            for p in match.participants.all():
+                if p.user != match.creator:
+                    Notification.objects.create(
+                        user=p.user,
+                        match=match,
+                        message=f"【場館警報】不可抗力建議取消通知：您參加的「{match.sport.name}」球局場館【{venue.name}】因臨時關閉（{reason}）受到影響，請留意主揪後續通知。"
+                    )
 
         return Response({
             "status": "success",
@@ -325,8 +408,8 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             # 2. Distance calculation
             dist = None
             if lat is not None and lng is not None:
-                venue_lat = match.court.venue.address.latitude if match.court and match.court.venue and match.court.venue.address else None
-                venue_lng = match.court.venue.address.longitude if match.court and match.court.venue and match.court.venue.address else None
+                venue_lat = match.court.venue.latitude if match.court and match.court.venue else None
+                venue_lng = match.court.venue.longitude if match.court and match.court.venue else None
                 if venue_lat is not None and venue_lng is not None:
                     dist = haversine_distance(float(lat), float(lng), float(venue_lat), float(venue_lng))
             
@@ -366,26 +449,38 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                         if sport:
                             assigned_court.sports.add(sport)
         
-        if assigned_court:
-            match = serializer.save(creator=self.request.user, court=assigned_court)
-        else:
-            match = serializer.save(creator=self.request.user)
+        if not assigned_court:
+            from rest_framework import serializers
+            raise serializers.ValidationError({"court_id": "本場館無可用或符合該運動項目的球場，球局一定要有場地才能建立。"})
+            
+        match = serializer.save(creator=self.request.user, court=assigned_court)
 
         MatchParticipant.objects.get_or_create(match=match, user=self.request.user)
         
-        venue = match.court.venue if match.court else None
+        venue = match.court.venue
         if venue:
-            Notification.objects.create(
-                match=match,
-                message=f"新球局開團通知 🏸：您收藏的場館【{venue.name}】有新的「{match.sport.name}」球局發起了，趕快去看看吧！"
-            )
+            favs = FavoriteVenue.objects.filter(venue=venue)
+            for f in favs:
+                Notification.objects.create(
+                    user=f.user,
+                    match=match,
+                    message=f"新球局開團通知 🏸：您收藏的場館【{venue.name}】有新的「{match.sport.name}」球局發起了，趕快去看看吧！"
+                )
 
     def perform_update(self, serializer):
         match = serializer.save()
         Notification.objects.create(
+            user=match.creator,
             match=match,
-            message=f"球局資訊修改通知 🏸：您參加的球局「{match.sport.name}」已被主揪修改了資訊，請查看最新時間與內容。"
+            message=f"球局資訊修改通知 🏸：您發起的球局「{match.sport.name}」資訊已成功修改。"
         )
+        for p in match.participants.all():
+            if p.user != match.creator:
+                Notification.objects.create(
+                    user=p.user,
+                    match=match,
+                    message=f"球局資訊修改通知 🏸：您參加的球局「{match.sport.name}」已被主揪修改了資訊，請查看最新時間與內容。"
+                )
 
     @action(detail=False, methods=['post'], url_path='quick-match')
     def quick_match(self, request):
@@ -465,29 +560,39 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         if match.participants.filter(user=user).exists():
             return Response({"detail": "You are already a participant in this match."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 3.5 Gender limit check
+        if match.gender_limit == '限男' and user.gender != '男':
+            return Response({"detail": "此球局限男性參加。"}, status=status.HTTP_400_BAD_REQUEST)
+        if match.gender_limit == '限女' and user.gender != '女':
+            return Response({"detail": "此球局限女性參加。"}, status=status.HTTP_400_BAD_REQUEST)
+
         # 4. Level check
         user_level_obj = UserSportLevel.objects.filter(user=user, sport=match.sport).first()
-        user_level = user_level_obj.level if user_level_obj else 'B(advanced)'
+        user_level = user_level_obj.level if user_level_obj else 'B(熟練)'
         
         level_map = {
-            'C(beginner)': ['beginner', 'casual', 'C'],
-            'B(advanced)': ['casual', 'advanced', 'B'],
-            'A(Veteran)': ['advanced', 'A'],
-            'S(Elite)': ['advanced', 'S'],
-            'beginner': ['beginner', 'C'],
-            'casual': ['casual', 'B'],
-            'advanced': ['advanced', 'A', 'S']
+            'C(初學者)': ['beginner', 'casual', 'C', 'C(初學者)'],
+            'B(熟練)': ['casual', 'advanced', 'B', 'B(熟練)'],
+            'A(高手)': ['advanced', 'A', 'A(高手)'],
+            'S(菁英)': ['advanced', 'S', 'S(菁英)'],
+            # 也保留對舊資料的相容
+            'C(beginner)': ['beginner', 'casual', 'C', 'C(初學者)'],
+            'B(advanced)': ['casual', 'advanced', 'B', 'B(熟練)'],
+            'A(Veteran)': ['advanced', 'A', 'A(高手)'],
+            'S(Elite)': ['advanced', 'S', 'S(菁英)'],
+            'beginner': ['beginner', 'C', 'C(初學者)'],
+            'casual': ['casual', 'B', 'B(熟練)'],
+            'advanced': ['advanced', 'A', 'S', 'A(高手)', 'S(菁英)']
         }
         
         if user_level in level_map:
-            allowed_target_levels = level_map.get(user_level, ['casual', 'B'])
+            allowed_target_levels = level_map.get(user_level, ['casual', 'B', 'B(熟練)'])
         else:
-            allowed_target_levels = [user_level, 'casual', 'B']
+            allowed_target_levels = [user_level, 'casual', 'B', 'B(熟練)']
 
         if match.target_level not in allowed_target_levels:
-            # Forgiving level match: if target_level is single letter e.g., 'B'
             if match.target_level and len(match.target_level) == 1:
-                pass # Accept it to avoid breaking client V1.2 flow
+                pass
             else:
                 return Response({
                     "detail": f"Your level ({user_level}) does not match the target level ({match.target_level})."
@@ -549,6 +654,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                     item.save()
 
                 Notification.objects.create(
+                    user=first_waiting.user,
                     match=match,
                     message=f"候補成功轉正通知 🏸：恭喜！{first_waiting.user.name} 候補的「{match.sport.name}」已成功轉為正式隊員，請準時出席！"
                 )
@@ -595,7 +701,17 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         if match.cancel_deadline and now > match.cancel_deadline:
             is_late_cancel = True
         else:
-            match_time = timezone.make_aware(timezone.datetime.combine(match.booking_date, timezone.datetime.min.time()))
+            start_time = timezone.datetime.min.time()
+            if match.time_slot and '-' in match.time_slot:
+                start_str = match.time_slot.split('-')[0].strip()
+                for fmt in ("%H:%M", "%H:%M:%S"):
+                    try:
+                        start_time = timezone.datetime.strptime(start_str, fmt).time()
+                        break
+                    except ValueError:
+                        pass
+            
+            match_time = timezone.make_aware(timezone.datetime.combine(match.booking_date, start_time))
             if (match_time - now).total_seconds() < 86400:
                 is_late_cancel = True
 
@@ -626,6 +742,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                     item.save()
 
                 Notification.objects.create(
+                    user=first_waiting.user,
                     match=match,
                     message=f"候補成功轉正通知 🏸：恭喜！{first_waiting.user.name} 候補的「{match.sport.name}」已成功轉為正式隊員，請準時出席！"
                 )
@@ -644,6 +761,50 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             response_data["warning"] = warning_msg
             response_data["credit_point"] = user.credit_point
         return Response(response_data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get', 'post'], url_path='announcements')
+    def announcements(self, request, pk=None):
+        match = self.get_object()
+        if request.method == 'GET':
+            announcements = match.announcements.all().order_by('-created_at')
+            data = []
+            for a in announcements:
+                formatted_time = timezone.localtime(a.created_at).strftime("%I:%M %p")
+                data.append({
+                    "id": a.id,
+                    "text": a.content,
+                    "time": formatted_time
+                })
+            return Response(data, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            if match.creator != request.user:
+                return Response({"detail": "Only the host can post announcements."}, status=status.HTTP_403_FORBIDDEN)
+            
+            text = request.data.get('text')
+            if not text:
+                return Response({"detail": "text is required."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            announcement = Announcement.objects.create(
+                game=match,
+                content=text,
+                title=f"球局【{match.sport.name}】公告"
+            )
+            
+            for p in match.participants.all():
+                if p.user != match.creator:
+                    Notification.objects.create(
+                        user=p.user,
+                        match=match,
+                        message=f"球局公告通知 📢：您參與的球局「{match.sport.name}」有新公告：「{text}」"
+                    )
+            
+            formatted_time = timezone.localtime(announcement.created_at).strftime("%I:%M %p")
+            return Response({
+                "id": announcement.id,
+                "text": announcement.content,
+                "time": formatted_time
+            }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['patch'], url_path='venue-status')
     def venue_status(self, request, pk=None):
@@ -814,6 +975,26 @@ class ReportViewSet(viewsets.ModelViewSet):
     queryset = Report.objects.all()
     serializer_class = ReportSerializer
 
+    def create(self, request, *args, **kwargs):
+        game_id = request.data.get('game_id')
+        reported_user_id = request.data.get('reported_user_id')
+        
+        if not game_id or not reported_user_id:
+            return Response({"detail": "game_id and reported_user_id are required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        existing_report = Report.objects.filter(
+            match_id=game_id,
+            reporter=request.user,
+            offender_id=reported_user_id
+        )
+        if existing_report.exists():
+            return Response(
+                {"detail": "您已經針對此球局檢舉過該名使用者，無法重複檢舉。"},
+                status=status.HTTP_409_CONFLICT
+            )
+            
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(reporter=self.request.user)
 
@@ -934,8 +1115,7 @@ class OpenDataViewSet(viewsets.ViewSet):
             mahjong, _ = Sport.objects.get_or_create(name="麻將")
 
             addr, _ = Address.objects.get_or_create(
-                city="新北市", district="板橋區", street_line="中正路8號",
-                defaults={"latitude": 25.0116, "longitude": 121.4617}
+                city="新北市", district="板橋區", street_line="中正路8號"
             )
 
             venue, _ = Venue.objects.get_or_create(
@@ -943,7 +1123,9 @@ class OpenDataViewSet(viewsets.ViewSet):
                 defaults={
                     "address": addr,
                     "opening_hours": {"weekdays": "06:00-22:00", "weekends": "06:00-22:00"},
-                    "types": "indoor"
+                    "types": "indoor",
+                    "latitude": 25.0116,
+                    "longitude": 121.4617
                 }
             )
 
@@ -1027,7 +1209,6 @@ class OpenDataViewSet(viewsets.ViewSet):
         }, status=status.HTTP_200_OK)
 
 class FeedbackViewSet(viewsets.ModelViewSet):
-    queryset = Feedback.objects.all()
     serializer_class = FeedbackSerializer
 
     def get_permissions(self):
@@ -1035,8 +1216,24 @@ class FeedbackViewSet(viewsets.ModelViewSet):
             return [permissions.IsAuthenticated()]
         return [IsAdminRole()]
 
+    def get_queryset(self):
+        queryset = Feedback.objects.all()
+        is_handled = self.request.query_params.get('is_handled')
+        if is_handled is not None:
+            val = is_handled.lower() in ['true', '1']
+            queryset = queryset.filter(is_handled=val)
+        return queryset
+
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['put'], url_path='handle')
+    def handle_feedback(self, request, pk=None):
+        feedback = self.get_object()
+        is_handled_val = request.data.get('is_handled', True)
+        feedback.is_handled = is_handled_val
+        feedback.save()
+        return Response(FeedbackSerializer(feedback).data, status=status.HTTP_200_OK)
 
 class AnnouncementViewSet(viewsets.ModelViewSet):
     queryset = Announcement.objects.all().order_by('-created_at')

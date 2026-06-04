@@ -43,11 +43,17 @@
 
 ### 3. `users` 資料表 (使用者與管理員帳號表)
 
-| 缺漏欄位/屬性 | 資料型態 | 預設值 | 規格說明 / V1.2 用途 |
+| 缺漏欄位/屬性 | 資料型態 | 預設值 | 規格說明 / 用途 |
 | :--- | :--- | :--- | :--- |
-| `gender` | `varchar(10)` | `NULL` | 使用者性別：`'男'` 或 `'女'` (舊有 `nojo528.sql` 實體表中無此欄位，但 Django 代碼已使用)。 |
+| `gender` | `varchar(10)` | `NULL` | 使用者性別：`'男'` 或 `'女'` (V1.2 欄位，Django 已使用)。 |
 | `avatar_url` | `varchar(255)` | `NULL` | 大頭貼圖片連結網址。 |
 | `bio` | `text` | `NULL` | 個人簡介。 |
+| `password` | `varchar(128)` | — | **Django 認證系統欄位 (必填)：** 儲存雜湊後的密碼。現有 MySQL 實體表缺少此欄位，會導致登入/查詢時發生 `OperationalError: Unknown column 'users.password'` 錯誤。 |
+| `last_login` | `datetime(6)` | `NULL` | **Django 認證系統欄位：** 記錄最後登入時間。 |
+| `is_superuser` | `tinyint(1)` | `0` | **Django 認證系統欄位：** 標記是否為超級使用者。 |
+| `is_staff` | `tinyint(1)` | `0` | **Django 認證系統欄位：** 標記是否具備工作人員權限。 |
+| `is_active` | `tinyint(1)` | `1` | **Django 認證系統欄位：** 標記帳號是否有效。 |
+| `date_joined` | `datetime(6)` | — | **Django 認證系統欄位：** 帳號創立日期。 |
 
 ---
 
@@ -88,14 +94,23 @@ ALTER TABLE `reports`
 
 
 -- ==========================================
--- 3. 更新 `users` 資料表
+-- 3. 更新 `users` 資料表 (包含 Django 系統必要欄位)
 -- ==========================================
 
--- 新增性別、頭貼連結、個人簡介 (解決 Django 欄位與 MySQL 實體表不一致)
+-- 新增性別、頭貼連結、個人簡介 (解決 V1.2 對齊)
 ALTER TABLE `users`
   ADD COLUMN `gender` varchar(10) NULL COMMENT '性別 (男/女)',
   ADD COLUMN `avatar_url` varchar(255) NULL COMMENT '頭貼網址',
   ADD COLUMN `bio` text NULL COMMENT '個人簡介';
+
+-- 新增 Django 使用者與權限管理核心系統欄位 (解決 1054 Unknown column 'users.password' 等錯誤)
+ALTER TABLE `users`
+  ADD COLUMN `password` varchar(128) NOT NULL DEFAULT 'pbkdf2_sha256$870000$default_placeholder_hash$' COMMENT 'Django密碼雜湊',
+  ADD COLUMN `last_login` datetime(6) NULL COMMENT '最後登入時間',
+  ADD COLUMN `is_superuser` tinyint(1) NOT NULL DEFAULT 0 COMMENT '超級用戶標記',
+  ADD COLUMN `is_staff` tinyint(1) NOT NULL DEFAULT 0 COMMENT '管理後台權限標記',
+  ADD COLUMN `is_active` tinyint(1) NOT NULL DEFAULT 1 COMMENT '帳號啟用狀態',
+  ADD COLUMN `date_joined` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '帳號創立日期';
 ```
 
 ---

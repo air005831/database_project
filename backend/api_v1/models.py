@@ -3,19 +3,20 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.utils import timezone
 
 class UserManager(BaseUserManager):
-    def create_user(self, phone, name, birthday, password=None, **extra_fields):
-        if not phone:
-            raise ValueError('The Phone number must be set')
-        user = self.model(phone=phone, name=name, birthday=birthday, **extra_fields)
+    def create_user(self, email, name, password=None, **extra_fields):
+        if not email:
+            raise ValueError('The Email must be set')
+        email = self.normalize_email(email)
+        user = self.model(email=email, name=name, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, phone, name, birthday, password=None, **extra_fields):
+    def create_superuser(self, email, name, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('role', 'admin')
-        return self.create_user(phone, name, birthday, password, **extra_fields)
+        return self.create_user(email, name, password, **extra_fields)
 
 class User(AbstractBaseUser, PermissionsMixin):
     ROLE_CHOICES = (
@@ -23,7 +24,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('admin', 'Admin'),
     )
     id = models.AutoField(primary_key=True, db_column='user_id')
-    phone = models.CharField(max_length=20, unique=True)
+    email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=20, unique=True, null=True, blank=True)
     name = models.CharField(max_length=100)
     birthday = models.DateField(db_column='birth_date', null=True, blank=True)
     credit_point = models.IntegerField(default=100)
@@ -37,8 +39,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     objects = UserManager()
 
-    USERNAME_FIELD = 'phone'
-    REQUIRED_FIELDS = ['name', 'birthday']
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['name']
 
     @property
     def age(self):
@@ -48,7 +50,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         return today.year - self.birthday.year - ((today.month, today.day) < (self.birthday.month, self.birthday.day))
 
     def __str__(self):
-        return f"{self.name} ({self.phone})"
+        return f"{self.name} ({self.email})"
 
     class Meta:
         db_table = 'users'
@@ -65,12 +67,13 @@ class Sport(models.Model):
 
 class UserSportLevel(models.Model):
     LEVEL_CHOICES = (
-        ('C(beginner)', 'Beginner'),
-        ('B(advanced)', 'Advanced'),
-        ('A(Veteran)', 'Veteran'),
-        ('S(Elite)', 'Elite'),
+        ('C(初學者)', 'C(初學者)'),
+        ('B(熟練)', 'B(熟練)'),
+        ('A(高手)', 'A(高手)'),
+        ('S(菁英)', 'S(菁英)'),
     )
-    user = models.ForeignKey(User, on_delete=models.CASCADE, primary_key=True, db_column='user_id', related_name='sport_levels')
+    id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='sport_levels')
     sport = models.ForeignKey(Sport, on_delete=models.CASCADE, db_column='sport_id')
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES)
     updated_at = models.DateTimeField(auto_now=True)
@@ -84,8 +87,6 @@ class Address(models.Model):
     city = models.CharField(max_length=50)
     district = models.CharField(max_length=50)
     street_line = models.CharField(max_length=255)
-    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
 
     def __str__(self):
         return f"{self.city}{self.district}{self.street_line}"
@@ -114,6 +115,8 @@ class Venue(models.Model):
     name = models.CharField(max_length=100)
     opening_hours = models.JSONField(null=True, blank=True)
     types = models.CharField(max_length=20, choices=VENUE_TYPES, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True, db_column='latitude')
+    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True, db_column='longitude')
     facilities = models.ManyToManyField(Facility, db_table='venue_facilities', related_name='venues')
 
     def __str__(self):
@@ -156,23 +159,21 @@ class GameMatch(models.Model):
         ('failed_to_start', 'Failed to Start'),
     )
     LEVEL_CHOICES = (
-        ('beginner', 'Beginner'),
-        ('casual', 'Casual'),
-        ('advanced', 'Advanced'),
-        ('S', 'Elite'),
-        ('A', 'Veteran'),
-        ('B', 'Advanced'),
-        ('C', 'Beginner'),
+        ('C(初學者)', 'C(初學者)'),
+        ('B(熟練)', 'B(熟練)'),
+        ('A(高手)', 'A(高手)'),
+        ('S(菁英)', 'S(菁英)'),
     )
     BOOKING_STATUS_CHOICES = (
-        ('pending', 'Pending'),
-        ('booked', 'Booked'),
-        ('cancelled', 'Cancelled'),
+        ('已佔到/已預約', '已佔到/已預約'),
+        ('未佔到/未預約', '未佔到/未預約'),
+        ('未確認', '未確認'),
     )
     id = models.AutoField(primary_key=True, db_column='game_id')
+    game_name = models.CharField(max_length=100, db_column='game_name', default='未命名球局')
     creator = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='created_matches')
     sport = models.ForeignKey(Sport, on_delete=models.CASCADE, db_column='sport_id')
-    court = models.ForeignKey(Court, on_delete=models.SET_NULL, null=True, blank=True, db_column='court_id')
+    court = models.ForeignKey(Court, on_delete=models.CASCADE, db_column='court_id', default=1)
     least_players = models.IntegerField(default=1)
     most_players = models.IntegerField()
     target_level = models.CharField(max_length=20, choices=LEVEL_CHOICES)
@@ -185,10 +186,9 @@ class GameMatch(models.Model):
     weather = models.JSONField(db_column='weather', null=True, blank=True)
     air_index = models.IntegerField(null=True, blank=True)
     is_confirmed = models.BooleanField(default=False)
-    booking_status = models.CharField(max_length=20, choices=BOOKING_STATUS_CHOICES, default='pending')
+    booking_status = models.CharField(max_length=20, choices=BOOKING_STATUS_CHOICES, default='未佔到/未預約')
     duration = models.CharField(max_length=50, default="2 小時")
-    is_free = models.BooleanField(default=False)
-    description = models.TextField(null=True, blank=True)
+    game_note = models.TextField(null=True, blank=True, db_column='game_note')
     gender_limit = models.CharField(max_length=20, default='不限')
     venue_status = models.CharField(max_length=20, default='未確認')
     venue_note = models.TextField(null=True, blank=True)
@@ -197,9 +197,7 @@ class GameMatch(models.Model):
     @property
     def split_price(self):
         import math
-        if self.is_free:
-            return 0
-        if self.most_players > 0:
+        if self.total_price is not None and self.total_price > 0 and self.most_players > 0:
             return math.ceil(float(self.total_price) / self.most_players)
         return 0
 
@@ -208,7 +206,7 @@ class GameMatch(models.Model):
         return self.participants.count()
 
     def __str__(self):
-        return f"{self.sport.name} at {self.court.venue.name if self.court else 'Unknown Court'} ({self.booking_date} {self.time_slot})"
+        return f"{self.game_name} - {self.sport.name} at {self.court.venue.name if self.court else 'Unknown Court'} ({self.booking_date} {self.time_slot})"
 
     class Meta:
         db_table = 'gamesmatches'
@@ -241,7 +239,8 @@ class MatchWaitlist(models.Model):
         unique_together = (('match', 'user'), ('match', 'queue_position'))
 
 class FavoriteGame(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, primary_key=True, db_column='user_id', related_name='favorite_games')
+    id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='favorite_games')
     match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id')
 
     class Meta:
@@ -325,6 +324,7 @@ class UserAvailability(models.Model):
 
 class Notification(models.Model):
     id = models.AutoField(primary_key=True, db_column='notification_id')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='notifications', null=True, blank=True)
     match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', related_name='notifications')
     message = models.TextField(db_column='message')
     is_read = models.BooleanField(default=False)
@@ -356,6 +356,7 @@ class Feedback(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='feedbacks')
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     content = models.TextField()
+    is_handled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -363,7 +364,8 @@ class Feedback(models.Model):
 
 class Announcement(models.Model):
     id = models.AutoField(primary_key=True, db_column='announcement_id')
-    title = models.CharField(max_length=200)
+    game = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', null=True, blank=True, related_name='announcements')
+    title = models.CharField(max_length=200, default='公告')
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
