@@ -393,7 +393,7 @@ class Blacklist(models.Model):
 class Notification(models.Model):
     id = models.AutoField(primary_key=True, db_column='notification_id')
     user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='notifications', null=True, blank=True)
-    match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', related_name='notifications')
+    match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', related_name='notifications', null=True, blank=True)
     message = models.TextField(db_column='message')
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -426,10 +426,11 @@ class GameBulletin(models.Model):
 
 class Feedback(models.Model):
     id = models.AutoField(primary_key=True, db_column='feedback_id')
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, db_column='user_id', related_name='feedbacks')
-    type = models.CharField(max_length=50)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='feedbacks')
+    type = models.CharField(max_length=50, default='建議')
     content = models.TextField()
     is_handled = models.BooleanField(default=False)
+    admin_reply = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -440,9 +441,40 @@ class Announcement(models.Model):
     id = models.AutoField(primary_key=True, db_column='announcement_id')
     title = models.CharField(max_length=200)
     content = models.TextField()
+    photo = models.JSONField(default=list, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'announcements'
         managed = FORCE_SQLITE
+
+
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+
+@receiver(post_save, sender=Announcement)
+def send_announcement_notifications(sender, instance, created, **kwargs):
+    if created:
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        users = User.objects.all()
+        notifications = []
+        for user in users:
+            notifications.append(
+                Notification(
+                    user=user,
+                    message=f"【系統公告】{instance.title}：{instance.content} (Ref: #{instance.id})"
+                )
+            )
+        if notifications:
+            Notification.objects.bulk_create(notifications)
+
+
+@receiver(post_delete, sender=Announcement)
+def delete_announcement_notifications(sender, instance, **kwargs):
+    Notification.objects.filter(
+        message__contains=f"(Ref: #{instance.id})"
+    ).delete()
+
+
 

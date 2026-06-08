@@ -3,7 +3,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
-from rest_framework import viewsets, status, permissions, mixins
+from rest_framework import viewsets, status, permissions, mixins, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -135,6 +135,8 @@ class AuthLoginView(APIView):
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['email', 'phone', 'name', 'line_id', 'instagram']
 
     @action(detail=False, methods=['get', 'put', 'patch', 'delete'], url_path='profile')
     def profile(self, request):
@@ -299,10 +301,43 @@ class SportViewSet(viewsets.ModelViewSet):
     queryset = Sport.objects.all()
     serializer_class = SportSerializer
     permission_classes = [permissions.AllowAny]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name']
 
 class VenueViewSet(viewsets.ModelViewSet):
-    queryset = Venue.objects.all()
     serializer_class = VenueSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'address__city', 'address__district', 'address__street_line']
+
+    def initialize_request(self, request, *args, **kwargs):
+        # Ensure Address with ID 1 exists so that POST /api/venues/ with address: 1 doesn't fail validation
+        try:
+            from .models import Address
+            if not Address.objects.filter(id=1).exists():
+                Address.objects.create(id=1, city="台北市", district="大安區", street_line="建國南路二段")
+        except Exception:
+            pass
+        return super().initialize_request(request, *args, **kwargs)
+
+    def get_queryset(self):
+        queryset = Venue.objects.select_related('address').all()
+        
+        # 篩選縣市 (外鍵 address 下的 city)
+        city = self.request.query_params.get('city')
+        if city and city.strip() and city not in ['null', 'undefined']:
+            queryset = queryset.filter(address__city=city)
+            
+        # 篩選區域 (外鍵 address 下 the district)
+        district = self.request.query_params.get('district')
+        if district and district.strip() and district not in ['null', 'undefined']:
+            queryset = queryset.filter(address__district__icontains=district)
+            
+        # 篩選運動類型 (該場館底下有任一球場支援該運動)
+        sport_id = self.request.query_params.get('sport_id')
+        if sport_id and sport_id.strip() and sport_id not in ['null', 'undefined']:
+            queryset = queryset.filter(courts__sports__id=sport_id).distinct()
+            
+        return queryset
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -320,7 +355,13 @@ class VenueViewSet(viewsets.ModelViewSet):
                 {"detail": "無法刪除此場地：仍有招募中或進行中的球局正在使用該場地。"},
                 status=status.HTTP_409_CONFLICT
             )
-        return super().destroy(request, *args, **kwargs)
+        address = venue.address
+        response = super().destroy(request, *args, **kwargs)
+        if address:
+            if not Venue.objects.filter(address=address).exists():
+                address.delete()
+        return response
+
 
     @action(detail=True, methods=['patch'], url_path='approve')
     def approve(self, request, pk=None):
@@ -368,6 +409,8 @@ class VenueViewSet(viewsets.ModelViewSet):
 class CourtViewSet(viewsets.ModelViewSet):
     queryset = Court.objects.all()
     serializer_class = CourtSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['venue__name', 'sports__name']
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -517,6 +560,8 @@ def update_all_match_statuses():
 class GameMatchViewSet(viewsets.ModelViewSet):
     queryset = GameMatch.objects.all()
     serializer_class = GameMatchSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['game_name', 'sport__name', 'court__venue__name', 'target_level']
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'quick_match']:
@@ -1127,7 +1172,15 @@ class FavoriteGameViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def list(self, request):
+        from django.db.models import Q
         favs = FavoriteGame.objects.filter(user=request.user)
+        search_query = request.query_params.get('search', None)
+        if search_query:
+            favs = favs.filter(
+                Q(match__game_name__icontains=search_query) |
+                Q(match__sport__name__icontains=search_query) |
+                Q(match__court__venue__name__icontains=search_query)
+            )
         serializer = FavoriteGameSerializer(favs, many=True)
         return Response(serializer.data)
 
@@ -1176,6 +1229,8 @@ class FavoriteGameViewSet(viewsets.ViewSet):
 class ReportViewSet(viewsets.ModelViewSet):
     queryset = Report.objects.all()
     serializer_class = ReportSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['reporter__name', 'offender__name', 'detail', 'admin_note']
 
     def create(self, request, *args, **kwargs):
         game_id = request.data.get('game_id')
@@ -1243,6 +1298,8 @@ class AdminGameViewSet(viewsets.ModelViewSet):
     queryset = GameMatch.objects.all()
     serializer_class = GameMatchSerializer
     permission_classes = [IsAdminRole]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['game_name', 'sport__name', 'court__venue__name', 'creator__name']
 
     def get_queryset(self):
         status_filter = self.request.query_params.get('status')
@@ -1297,10 +1354,15 @@ class NotificationViewSet(viewsets.ViewSet):
         match_ids = set(list(user_matches) + list(fav_venue_matches))
         
         notifs = Notification.objects.filter(
-            match_id__in=match_ids
+            Q(match_id__in=match_ids) | Q(match_id__isnull=True)
         ).filter(
             Q(user=request.user) | Q(user__isnull=True)
         ).order_by('-created_at')
+        
+        search_query = request.query_params.get('search', None)
+        if search_query:
+            notifs = notifs.filter(message__icontains=search_query)
+            
         serializer = NotificationSerializer(notifs, many=True)
         return Response(serializer.data)
 
@@ -1310,6 +1372,12 @@ class NotificationViewSet(viewsets.ViewSet):
         notif.is_read = True
         notif.save()
         return Response({"status": "success", "message": "Notification marked as read."}, status=status.HTTP_200_OK)
+
+    def destroy(self, request, pk=None):
+        notif = get_object_or_404(Notification, pk=pk)
+        notif.delete()
+        return Response({"status": "success", "message": "Notification deleted."}, status=status.HTTP_200_OK)
+
 
 class OpenDataViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]
@@ -1436,50 +1504,94 @@ class DemoWeatherView(APIView):
         # WeatherData is commented out
         return Response({"detail": f"Demo weather suitability updated to {value}% (Mocked)"}, status=status.HTTP_200_OK)
 
-class FeedbackViewSet(viewsets.ViewSet):
+class FeedbackViewSet(viewsets.ModelViewSet):
+    queryset = Feedback.objects.all().order_by('-created_at')
+    serializer_class = FeedbackSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['content', 'type', 'user__name']
+
     def get_permissions(self):
-        return [permissions.AllowAny()]
+        if self.action == 'create':
+            return [permissions.IsAuthenticated()]
+        return [IsAdminRole()]
 
-    def create(self, request):
-        fb_type = request.data.get('type')
-        content = request.data.get('content')
-        if not fb_type or not content:
-            return Response({"detail": "type and content are required."}, status=status.HTTP_400_BAD_REQUEST)
-        
-        user = request.user if request.user and request.user.is_authenticated else None
-        fb = Feedback.objects.create(
-            user=user,
-            type=fb_type,
-            content=content
-        )
-        serializer = FeedbackSerializer(fb)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    def get_queryset(self):
+        queryset = Feedback.objects.all().order_by('-created_at')
+        is_handled = self.request.query_params.get('is_handled')
+        if is_handled is not None:
+            val = is_handled.lower() in ['true', '1']
+            queryset = queryset.filter(is_handled=val)
+        return queryset
 
-class AdminFeedbackViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminRole]
-
-    def list(self, request):
-        feedbacks = Feedback.objects.all().order_by('-created_at')
-        serializer = FeedbackSerializer(feedbacks, many=True)
-        return Response(serializer.data)
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
     @action(detail=True, methods=['put'], url_path='handle')
     def handle_feedback(self, request, pk=None):
-        feedback = get_object_or_404(Feedback, pk=pk)
-        is_handled = request.data.get('is_handled', False)
+        feedback = self.get_object()
+        is_handled_val = request.data.get('is_handled', True)
+        if isinstance(is_handled_val, str):
+            is_handled = is_handled_val.lower() in ['true', '1']
+        else:
+            is_handled = bool(is_handled_val)
         
-        feedback.is_handled = is_handled in [True, 'true', 'True', 1, '1']
+        feedback.is_handled = is_handled
+        
+        admin_reply_val = request.data.get('admin_reply', '')
+        if admin_reply_val is not None:
+            feedback.admin_reply = admin_reply_val
+            
         feedback.save()
-        
-        serializer = FeedbackSerializer(feedback)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # Send notification to the user if marked as handled
+        if is_handled and feedback.user:
+            from .models import Notification
+            msg = f"【回饋處理通知】您提交的回饋已處理。管理員回覆：{feedback.admin_reply}"
+            Notification.objects.create(
+                user=feedback.user,
+                message=msg
+            )
+
+        return Response(FeedbackSerializer(feedback).data, status=status.HTTP_200_OK)
+
 
 class AnnouncementViewSet(viewsets.ModelViewSet):
     queryset = Announcement.objects.all().order_by('-created_at')
     serializer_class = AnnouncementSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['title', 'content']
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
             return [permissions.AllowAny()]
         return [IsAdminRole()]
+
+
+import os
+import uuid
+from django.conf import settings
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_image(request):
+    if 'file' not in request.FILES:
+        return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    uploaded_file = request.FILES['file']
+    ext = os.path.splitext(uploaded_file.name)[1].lower()
+    if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+        return Response({"error": "Invalid file type. Only PNG, JPG, JPEG, GIF, and WEBP are allowed."}, status=status.HTTP_400_BAD_REQUEST)
+        
+    filename = f"uploads/{uuid.uuid4()}{ext}"
+    path = default_storage.save(filename, ContentFile(uploaded_file.read()))
+    file_url = request.build_absolute_uri(settings.MEDIA_URL + path)
+    
+    return Response({"url": file_url}, status=status.HTTP_201_CREATED)
+
+
+
 

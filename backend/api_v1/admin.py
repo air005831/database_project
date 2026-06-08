@@ -3,7 +3,7 @@ from .models import (
     User, Sport, UserSportLevel, Address, Facility, Venue, Court, 
     CourtConflict, GameMatch, MatchParticipant,
     FavoriteGame, PenaltyRule, Report, Blacklist,
-    Notification
+    Notification, Feedback, Announcement
 )
 
 @admin.register(User)
@@ -102,7 +102,15 @@ class NotificationAdmin(admin.ModelAdmin):
 # class WeatherDataAdmin(admin.ModelAdmin):
 #     list_display = ('city', 'district', 'temperature', 'rain_probability', 'aqi', 'updated_at')
 #     list_filter = ('city',)
-# @admin.register(Announcement)
-# class AnnouncementAdmin(admin.ModelAdmin):
-#     list_display = ('title', 'created_at')
-#     list_filter = ('created_at',)
+@admin.register(Feedback)
+class FeedbackAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'type', 'is_handled', 'created_at')
+    list_filter = ('type', 'is_handled', 'created_at')
+    search_fields = ('content',)
+
+@admin.register(Announcement)
+class AnnouncementAdmin(admin.ModelAdmin):
+    list_display = ('id', 'title', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('title', 'content')
+

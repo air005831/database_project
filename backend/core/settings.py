@@ -30,9 +30,11 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     "coral-joyride-gallantly.ngrok-free.dev",
+    "spore-easily-detective.ngrok-free.dev",
 ]
 CSRF_TRUSTED_ORIGINS = [
     "https://coral-joyride-gallantly.ngrok-free.dev",
+    "https://spore-easily-detective.ngrok-free.dev",
 ]
 
 
@@ -96,12 +98,12 @@ def check_mysql_availability(host='localhost', port=3306, timeout=1.0):
     # 1. Check if MySQL driver is installed
     mysql_driver_installed = False
     try:
-        import pymysql
+        import pymysql  # type: ignore
         pymysql.install_as_MySQLdb()
         mysql_driver_installed = True
     except ImportError:
         try:
-            import MySQLdb
+            import MySQLdb  # type: ignore
             mysql_driver_installed = True
         except ImportError:
             pass
@@ -233,4 +235,18 @@ from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "ngrok-skip-browser-warning",
 ]
+
+# Media files configurations
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Fix Windows registry mime-type mapping issues for image files
+import mimetypes
+mimetypes.add_type("image/png", ".png", True)
+mimetypes.add_type("image/jpeg", ".jpg", True)
+mimetypes.add_type("image/jpeg", ".jpeg", True)
+mimetypes.add_type("image/gif", ".gif", True)
+mimetypes.add_type("image/webp", ".webp", True)
+
+
 

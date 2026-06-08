@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    User, Sport, UserSportLevel, Address, Venue, Court, GameMatch, 
+    User, Sport, UserSportLevel, Address, Facility, Venue, Court, GameMatch, 
     MatchParticipant, FavoriteGame, 
     PenaltyRule, Report, Blacklist, Notification, GameBulletin,
     Feedback, Announcement
@@ -37,9 +37,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return res
 
 class SportSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source='chinese_name', read_only=True)
+
     class Meta:
         model = Sport
-        fields = '__all__'
+        fields = ('id', 'name')
 
 class UserSportLevelSerializer(serializers.ModelSerializer):
     sport_name = serializers.CharField(source='sport.chinese_name', read_only=True)
@@ -56,19 +58,135 @@ class AddressSerializer(serializers.ModelSerializer):
 class VenueSerializer(serializers.ModelSerializer):
     address_detail = AddressSerializer(source='address', read_only=True)
     facilities = serializers.SlugRelatedField(many=True, read_only=True, slug_field='name')
-
+    # 1. 定義寫入專用的唯寫虛擬欄位 (Write-Only Fields)
+    city = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    district = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    street_line = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    sport_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    court_count = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     class Meta:
         model = Venue
-        fields = ('id', 'name', 'address', 'address_detail', 'opening_hours', 'types', 'facilities', 'latitude', 'longitude')
+        fields = (
+            'id', 'name', 'address', 'address_detail', 'opening_hours', 'types', 
+            'facilities', 'latitude', 'longitude',
+            'city', 'district', 'street_line', 'sport_id', 'court_count'
+        )
+    # 2. 於 representation 中動態加入 court_count，避免欄位名稱衝突
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        # 統計關聯的球場數量
+        representation['court_count'] = instance.courts.count()
+        return representation
+    # 3. 處理 POST 建立邏輯
+    def create(self, validated_data):
+        city = validated_data.pop('city', None)
+        district = validated_data.pop('district', None)
+        street_line = validated_data.pop('street_line', None)
+        sport_id = validated_data.pop('sport_id', None)
+        court_count = validated_data.pop('court_count', None)
+        # 自動處理 Address 外鍵 (若不存在則新增)
+        if city or district or street_line:
+            address_obj, created = Address.objects.get_or_create(
+                city=city or '',
+                district=district or '',
+                street_line=street_line or ''
+            )
+            validated_data['address'] = address_obj
+        # 建立場館
+        venue = super().create(validated_data)
+        # 根據 court_count 數量與 sport_id 自動生成球場
+        if court_count and sport_id:
+            try:
+                sport_obj = Sport.objects.get(id=sport_id)
+                for _ in range(court_count):
+                    court = Court.objects.create(venue=venue)
+                    court.sports.add(sport_obj)
+            except Sport.DoesNotExist:
+                pass
+        # 處理 facilities 寫入
+        facilities_data = self.initial_data.get('facilities', None)
+        if facilities_data is not None:
+            for facility_name in facilities_data:
+                facility_obj, created = Facility.objects.get_or_create(name=facility_name)
+                venue.facilities.add(facility_obj)
+        return venue
+    # 4. 處理 PATCH / PUT 更新邏輯
+    def update(self, instance, validated_data):
+        city = validated_data.pop('city', None)
+        district = validated_data.pop('district', None)
+        street_line = validated_data.pop('street_line', None)
+        sport_id = validated_data.pop('sport_id', None)
+        court_count = validated_data.pop('court_count', None)
+        # 若有提供地址資訊，進行地址更新或重新綁定
+        if city is not None or district is not None or street_line is not None:
+            current_address = instance.address
+            new_city = city if city is not None else (current_address.city if current_address else '')
+            new_dist = district if district is not None else (current_address.district if current_address else '')
+            new_street = street_line if street_line is not None else (current_address.street_line if current_address else '')
+            
+            address_obj, created = Address.objects.get_or_create(
+                city=new_city,
+                district=new_dist,
+                street_line=new_street
+            )
+            validated_data['address'] = address_obj
+        # 更新場館資訊
+        venue = super().update(instance, validated_data)
+        # 同步球場數量與球場運動種類
+        if court_count is not None or sport_id is not None:
+            try:
+                sport_obj = None
+                if sport_id is not None:
+                    sport_obj = Sport.objects.get(id=sport_id)
+                
+                current_courts = list(venue.courts.all())
+                current_count = len(current_courts)
+                
+                # 如果要增設球場但沒有提供 sport_id，優先從現有球場取得運動種類
+                if court_count is not None and current_count < court_count and sport_obj is None:
+                    if current_count > 0:
+                        sport_obj = current_courts[0].sports.first()
+                    if sport_obj is None:
+                        sport_obj = Sport.objects.first()
+                        
+                # 處理球場數量的增刪
+                if court_count is not None:
+                    if current_count < court_count:
+                        for _ in range(court_count - current_count):
+                            court = Court.objects.create(venue=venue)
+                            if sport_obj:
+                                court.sports.add(sport_obj)
+                    elif current_count > court_count:
+                        courts_to_delete = current_courts[court_count:]
+                        for c in courts_to_delete:
+                            c.delete()
+                            
+                # 如果有提供 sport_id，確保所有剩餘的球場均更新為指定的運動種類
+                if sport_id is not None and sport_obj is not None:
+                    for court in venue.courts.all():
+                        court.sports.set([sport_obj])
+            except Sport.DoesNotExist:
+                pass
+        # 處理 facilities 更新
+        facilities_data = self.initial_data.get('facilities', None)
+        if facilities_data is not None:
+            venue.facilities.clear()
+            for facility_name in facilities_data:
+                facility_obj, created = Facility.objects.get_or_create(name=facility_name)
+                venue.facilities.add(facility_obj)
+        return venue
 
 
 class CourtSerializer(serializers.ModelSerializer):
     venue_detail = VenueSerializer(source='venue', read_only=True)
-    sports = serializers.SlugRelatedField(many=True, read_only=True, slug_field='name')
+    sports = serializers.SerializerMethodField()
 
     class Meta:
         model = Court
         fields = ('id', 'venue', 'venue_detail', 'name', 'occupied', 'base_price', 'sports')
+
+    def get_sports(self, obj):
+        return [sport.chinese_name for sport in obj.sports.all()]
 
 class MatchParticipantUserSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField(source='user.id')
@@ -416,12 +534,27 @@ class GameBulletinSerializer(serializers.ModelSerializer):
         fields = ('id', 'match', 'title', 'content', 'created_at')
 
 class FeedbackSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.name', read_only=True)
     class Meta:
         model = Feedback
-        fields = '__all__'
+        fields = ('id', 'user', 'user_name', 'type', 'content', 'is_handled', 'admin_reply', 'created_at')
+        read_only_fields = ('user',)
 
 class AnnouncementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Announcement
         fields = '__all__'
+
+    def validate_photo(self, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("公告圖片格式必須為列表（Array）。")
+        if len(value) > 3:
+            raise serializers.ValidationError("公告圖片數量上限為 3 張。")
+        for url in value:
+            if not isinstance(url, str):
+                raise serializers.ValidationError("公告圖片的 URL 必須是字串（String）。")
+        return value
+
 
