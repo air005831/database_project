@@ -91,7 +91,7 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 import socket
 
-def check_mysql_availability(host='localhost', port=3306, timeout=1.0):
+def check_mysql_availability(host='26.232.235.50', port=3306, timeout=1.0):
     """
     Check if MySQL driver is installed and if the port is open.
     """

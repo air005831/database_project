@@ -1310,11 +1310,27 @@ class AdminGameViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['patch'], url_path='status')
     def change_status(self, request, pk=None):
         match = self.get_object()
+        updated_fields = []
+
         status_val = request.data.get('status')
         if status_val:
             match.match_status = status_val
-            match.save()
-        return Response({"detail": f"Status updated to {match.match_status}"})
+            updated_fields.append('match_status')
+
+        booking_date = request.data.get('booking_date')
+        if booking_date:
+            match.booking_date = booking_date
+            updated_fields.append('booking_date')
+
+        time_slot = request.data.get('time_slot')
+        if time_slot:
+            match.time_slot = time_slot
+            updated_fields.append('time_slot')
+
+        if updated_fields:
+            match.save(update_fields=updated_fields)
+
+        return Response({"detail": f"Updated fields: {', '.join(updated_fields) if updated_fields else 'none'}"})
 
 class AdminBroadcastViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminRole]
@@ -1322,21 +1338,52 @@ class AdminBroadcastViewSet(viewsets.ViewSet):
     def create(self, request):
         target_group = request.data.get('target_group', 'all')
         content = request.data.get('content', '')
+        game_id = request.data.get('game_id', None)
 
         if not content:
             return Response({"detail": "content is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        matches = GameMatch.objects.all()
-        if target_group == 'organizers':
-            matches = matches.filter(match_status='recruiting')
-
         notifications = []
-        for match in matches:
-            notifications.append(Notification(match=match, message=content))
-        
-        Notification.objects.bulk_create(notifications)
 
-        return Response({"detail": f"Broadcast sent to {len(notifications)} matches."}, status=status.HTTP_200_OK)
+        if target_group == 'all':
+            # 廣播給所有人 (對每一個 match 產生一條通知)
+            matches = GameMatch.objects.all()
+            for match in matches:
+                notifications.append(Notification(match=match, message=content))
+        elif target_group == 'organizers':
+            # 廣播給所有招募中的主揪 (舊有相容)
+            matches = GameMatch.objects.filter(match_status='recruiting')
+            for match in matches:
+                notifications.append(Notification(match=match, message=content))
+        elif target_group == 'organizer':
+            # 【新功能】僅限通知該房的「房主 (Creator)」
+            if not game_id:
+                return Response({"detail": "game_id is required for target_group='organizer'."}, status=status.HTTP_400_BAD_REQUEST)
+            from django.shortcuts import get_object_or_404 as get_or_404
+            match = get_or_404(GameMatch, pk=game_id)
+            notifications.append(Notification(
+                user=match.creator,
+                match=match,
+                message=content
+            ))
+        elif target_group == 'room_members':
+            # 【新功能】通知該房的「所有人」(包含房主與所有參加者)
+            if not game_id:
+                return Response({"detail": "game_id is required for target_group='room_members'."}, status=status.HTTP_400_BAD_REQUEST)
+            from django.shortcuts import get_object_or_404 as get_or_404
+            match = get_or_404(GameMatch, pk=game_id)
+            # user=None 代表此通知屬於 match 層級，成員都能看見
+            notifications.append(Notification(
+                match=match,
+                message=content
+            ))
+        else:
+            return Response({"detail": f"Invalid target_group: {target_group}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if notifications:
+            Notification.objects.bulk_create(notifications)
+
+        return Response({"detail": f"Broadcast sent to {len(notifications)} notifications."}, status=status.HTTP_200_OK)
 
 class NotificationViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
@@ -1353,10 +1400,9 @@ class NotificationViewSet(viewsets.ViewSet):
         
         match_ids = set(list(user_matches) + list(fav_venue_matches))
         
+        # 篩選 (發送給我個人的通知) OR (此球局的公開/一般通知且沒有特定發送給別人)
         notifs = Notification.objects.filter(
-            Q(match_id__in=match_ids) | Q(match_id__isnull=True)
-        ).filter(
-            Q(user=request.user) | Q(user__isnull=True)
+            Q(user=request.user) | Q(match_id__in=match_ids, user__isnull=True)
         ).order_by('-created_at')
         
         search_query = request.query_params.get('search', None)
