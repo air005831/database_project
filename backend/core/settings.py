@@ -26,7 +26,14 @@ SECRET_KEY = 'django-insecure-!#8^d=@b09*&yf+_&8c$z9t(tfwhvossgf@d!k=$6gu#j9++o-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "coral-joyride-gallantly.ngrok-free.dev",
+]
+CSRF_TRUSTED_ORIGINS = [
+    "https://coral-joyride-gallantly.ngrok-free.dev",
+]
 
 
 # Application definition
@@ -133,9 +140,9 @@ if mysql_available:
         'default': {
             'ENGINE': 'django.db.backends.mysql',
             'NAME': 'nojo',
-            'USER': 'root',
-            'PASSWORD': '',
-            'HOST': 'localhost',
+            'USER': 'partner_dev',
+            'PASSWORD': 'dpuWPzBN7q8noSYj',
+            'HOST': '26.232.235.50',
             'PORT': '3306',
             'OPTIONS': {
                 'charset': 'utf8mb4',
@@ -144,9 +151,9 @@ if mysql_available:
         'nojo_django_db': {
             'ENGINE': 'django.db.backends.mysql',
             'NAME': 'nojo_django_db',
-            'USER': 'root',
-            'PASSWORD': '',
-            'HOST': 'localhost',
+            'USER': 'partner_dev',
+            'PASSWORD': 'dpuWPzBN7q8noSYj',
+            'HOST': '26.232.235.50',
             'PORT': '3306',
             'OPTIONS': {
                 'charset': 'utf8mb4',

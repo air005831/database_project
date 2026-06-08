@@ -13,14 +13,15 @@ from .models import (
     Sport, UserSportLevel, Address, Venue, Court, CourtConflict,
     GameMatch, MatchParticipant, FavoriteGame,
     PenaltyRule, Report, Blacklist,
-    Notification, GameBulletin
+    Notification, GameBulletin, Feedback, Announcement
 )
 from .serializers import (
     UserSerializer, UserProfileSerializer, SportSerializer, UserSportLevelSerializer,
     AddressSerializer, VenueSerializer, CourtSerializer, GameMatchSerializer,
     MatchParticipantSerializer, FavoriteGameSerializer,
     PenaltyRuleSerializer, ReportSerializer,
-    BlacklistSerializer, NotificationSerializer, GameBulletinSerializer
+    BlacklistSerializer, NotificationSerializer, GameBulletinSerializer,
+    FeedbackSerializer, AnnouncementSerializer
 )
 
 User = get_user_model()
@@ -84,7 +85,7 @@ class AuthRegisterView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        name = request.data.get('name')
+        name = request.data.get('name') or request.data.get('username')
         email = request.data.get('email')
         password = request.data.get('password')
 
@@ -113,7 +114,7 @@ class AuthLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        email = request.data.get('email')
+        email = request.data.get('email') or request.data.get('username')
         password = request.data.get('password')
 
         if not email or not password:
@@ -151,7 +152,7 @@ class UserViewSet(viewsets.ModelViewSet):
         phone = request.data.get('phone')
         bio = request.data.get('bio')
         gender = request.data.get('gender')
-        avatar = request.data.get('avatar')
+        avatar = request.data.get('avatar') or request.data.get('avatar_url')
         birthday = request.data.get('birthday')
         levels = request.data.get('levels')
         instagram = request.data.get('instagram') or request.data.get('ig')
@@ -208,7 +209,7 @@ class UserViewSet(viewsets.ModelViewSet):
             user.phone = phone
         if bio is not None:
             user.bio = bio
-        if avatar:
+        if avatar is not None:
             user.avatar_url = avatar
         if instagram is not None:
             user.instagram = instagram
@@ -1434,3 +1435,51 @@ class DemoWeatherView(APIView):
         value = request.data.get('value', 50)
         # WeatherData is commented out
         return Response({"detail": f"Demo weather suitability updated to {value}% (Mocked)"}, status=status.HTTP_200_OK)
+
+class FeedbackViewSet(viewsets.ViewSet):
+    def get_permissions(self):
+        return [permissions.AllowAny()]
+
+    def create(self, request):
+        fb_type = request.data.get('type')
+        content = request.data.get('content')
+        if not fb_type or not content:
+            return Response({"detail": "type and content are required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user = request.user if request.user and request.user.is_authenticated else None
+        fb = Feedback.objects.create(
+            user=user,
+            type=fb_type,
+            content=content
+        )
+        serializer = FeedbackSerializer(fb)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+class AdminFeedbackViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdminRole]
+
+    def list(self, request):
+        feedbacks = Feedback.objects.all().order_by('-created_at')
+        serializer = FeedbackSerializer(feedbacks, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['put'], url_path='handle')
+    def handle_feedback(self, request, pk=None):
+        feedback = get_object_or_404(Feedback, pk=pk)
+        is_handled = request.data.get('is_handled', False)
+        
+        feedback.is_handled = is_handled in [True, 'true', 'True', 1, '1']
+        feedback.save()
+        
+        serializer = FeedbackSerializer(feedback)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class AnnouncementViewSet(viewsets.ModelViewSet):
+    queryset = Announcement.objects.all().order_by('-created_at')
+    serializer_class = AnnouncementSerializer
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [IsAdminRole()]
+

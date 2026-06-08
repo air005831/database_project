@@ -423,3 +423,26 @@ class GameBulletin(models.Model):
     class Meta:
         db_table = 'game_bulletins'
         managed = FORCE_SQLITE
+
+class Feedback(models.Model):
+    id = models.AutoField(primary_key=True, db_column='feedback_id')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, db_column='user_id', related_name='feedbacks')
+    type = models.CharField(max_length=50)
+    content = models.TextField()
+    is_handled = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'feedbacks'
+        managed = FORCE_SQLITE
+
+class Announcement(models.Model):
+    id = models.AutoField(primary_key=True, db_column='announcement_id')
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'announcements'
+        managed = FORCE_SQLITE
+

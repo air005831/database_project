@@ -2,7 +2,8 @@ from rest_framework import serializers
 from .models import (
     User, Sport, UserSportLevel, Address, Venue, Court, GameMatch, 
     MatchParticipant, FavoriteGame, 
-    PenaltyRule, Report, Blacklist, Notification, GameBulletin
+    PenaltyRule, Report, Blacklist, Notification, GameBulletin,
+    Feedback, Announcement
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -17,10 +18,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source='id', read_only=True)
     age = serializers.ReadOnlyField()
     levels = serializers.SerializerMethodField()
+    avatar = serializers.CharField(source='avatar_url', required=False, allow_null=True, allow_blank=True)
 
     class Meta:
         model = User
-        fields = ('user_id', 'email', 'name', 'phone', 'birthday', 'gender', 'avatar_url', 'bio', 'age', 'credit_point', 'role', 'levels', 'line_id', 'instagram')
+        fields = ('user_id', 'email', 'name', 'phone', 'birthday', 'gender', 'avatar', 'avatar_url', 'bio', 'age', 'credit_point', 'role', 'levels', 'line_id', 'instagram')
 
     def get_levels(self, obj):
         res = {}
@@ -99,6 +101,7 @@ class MatchParticipantUserSerializer(serializers.ModelSerializer):
 class GameMatchSerializer(serializers.ModelSerializer):
     sport_id = serializers.PrimaryKeyRelatedField(queryset=Sport.objects.all(), source='sport')
     court_id = serializers.PrimaryKeyRelatedField(queryset=Court.objects.all(), source='court', required=False, allow_null=True)
+    venue_id = serializers.IntegerField(source='court.venue.id', read_only=True)
     sport_name = serializers.CharField(source='sport.chinese_name', read_only=True)
     venue_name = serializers.CharField(source='court.venue.name', read_only=True)
     split_price = serializers.ReadOnlyField()
@@ -113,7 +116,8 @@ class GameMatchSerializer(serializers.ModelSerializer):
     cancel_deadline = serializers.DateTimeField(required=False, allow_null=True)
     start_time = serializers.CharField(write_only=True, required=True)
     target_level = serializers.CharField(required=True)
-    duration = serializers.CharField(write_only=True, required=False, default='2 小時')
+    duration = serializers.CharField(required=False, default='2 小時')
+    description = serializers.CharField(source='game_note', required=False, allow_null=True, allow_blank=True)
     announcements = serializers.SerializerMethodField()
 
     def validate_target_level(self, value):
@@ -151,8 +155,8 @@ class GameMatchSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameMatch
         fields = [
-            'id', 'game_name', 'sport_id', 'sport_name', 'court_id', 'venue_name', 'least_players', 'most_players',
-            'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note',
+            'id', 'game_name', 'sport_id', 'sport_name', 'court_id', 'venue_id', 'venue_name', 'least_players', 'most_players',
+            'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note', 'description',
             'total_price', 'split_price', 'deposit_required', 'cancel_deadline',
             'weather', 'air_index', 'booking_status',
             'match_status', 'participants', 'waitlist', 'current_waitlist', 'max_waitlist', 'creator_id', 'distance_km', 'facilities',
@@ -206,8 +210,23 @@ class GameMatchSerializer(serializers.ModelSerializer):
         ret = super().to_representation(instance)
         if instance.time_slot and '-' in instance.time_slot:
             ret['start_time'] = instance.time_slot.split('-')[0].strip()
+            try:
+                t1, t2 = instance.time_slot.split('-')
+                import datetime
+                dt1 = datetime.datetime.strptime(t1.strip(), "%H:%M")
+                dt2 = datetime.datetime.strptime(t2.strip(), "%H:%M")
+                diff_hours = (dt2 - dt1).total_seconds() / 3600.0
+                if diff_hours < 0:
+                    diff_hours += 24
+                if diff_hours.is_integer():
+                    ret['duration'] = f"{int(diff_hours)} 小時"
+                else:
+                    ret['duration'] = f"{diff_hours} 小時"
+            except Exception:
+                ret['duration'] = "2 小時"
         else:
             ret['start_time'] = ""
+            ret['duration'] = "2 小時"
         return ret
 
     def validate(self, attrs):
@@ -224,7 +243,23 @@ class GameMatchSerializer(serializers.ModelSerializer):
             if not start_time_str and self.instance.time_slot and '-' in self.instance.time_slot:
                 start_time_str = self.instance.time_slot.split('-')[0].strip()
             if not duration_str:
-                duration_str = self.instance.duration
+                if self.instance.time_slot and '-' in self.instance.time_slot:
+                    try:
+                        t1, t2 = self.instance.time_slot.split('-')
+                        import datetime
+                        dt1 = datetime.datetime.strptime(t1.strip(), "%H:%M")
+                        dt2 = datetime.datetime.strptime(t2.strip(), "%H:%M")
+                        diff_hours = (dt2 - dt1).total_seconds() / 3600.0
+                        if diff_hours < 0:
+                            diff_hours += 24
+                        if diff_hours.is_integer():
+                            duration_str = f"{int(diff_hours)} 小時"
+                        else:
+                            duration_str = f"{diff_hours} 小時"
+                    except Exception:
+                        duration_str = '2 小時'
+                else:
+                    duration_str = '2 小時'
             if least_players is None:
                 least_players = self.instance.least_players
             if most_players is None:
@@ -379,3 +414,14 @@ class GameBulletinSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameBulletin
         fields = ('id', 'match', 'title', 'content', 'created_at')
+
+class FeedbackSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Feedback
+        fields = '__all__'
+
+class AnnouncementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Announcement
+        fields = '__all__'
+
