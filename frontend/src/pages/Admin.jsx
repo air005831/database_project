@@ -28,6 +28,7 @@ const getSportBadgeStyle = (sportName) => {
 function Admin() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // 場地、揪團、公告狀態改為連線載入
   const [venues, setVenues] = useState([]);
@@ -805,9 +806,38 @@ function Admin() {
     : ["免費車位", "熱水淋浴間", "自動販賣機", "冷氣機", "廁所"];
 
   return (
-    <div className="admin-container" style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
+    <div className="admin-container">
+      {/* 手機版頂部列 */}
+      <header className="admin-mobile-header">
+        <button 
+          onClick={() => setIsSidebarOpen(true)}
+          style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <span style={{ fontSize: '18px', fontWeight: '800' }}>
+          {activeTab === 'dashboard' && '數據分析'}
+          {activeTab === 'venues' && '場地管理'}
+          {activeTab === 'announcements' && '系統公告'}
+          {activeTab === 'feedbacks' && '使用者回饋'}
+          {activeTab === 'user_management' && '會員管理'}
+          {activeTab === 'demo_games' && '房間狀態調整'}
+        </span>
+        <div style={{ width: '24px' }}></div>
+      </header>
+
+      {/* 側邊欄遮罩 */}
+      <div 
+        className={`admin-sidebar-overlay ${isSidebarOpen ? 'visible' : ''}`}
+        onClick={() => setIsSidebarOpen(false)}
+      ></div>
+
       {/* 側邊欄 */}
-      <aside style={{ width: '260px', backgroundColor: '#1e293b', color: 'white', padding: '24px', display: 'flex', flexDirection: 'column' }}>
+      <aside className={`admin-sidebar ${isSidebarOpen ? 'open' : ''}`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '40px', cursor: 'pointer' }} onClick={() => navigate('/home')}>
           <div style={{ width: '32px', height: '32px', backgroundColor: '#7995a5', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: 'bold' }}>不</div>
           <span style={{ fontSize: '20px', fontWeight: '800' }}>管理後台</span>
@@ -816,37 +846,37 @@ function Admin() {
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <button 
             className={`admin-nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }}
           >
             <LayoutDashboard size={20} /> 數據分析
           </button>
           <button 
             className={`admin-nav-btn ${activeTab === 'venues' ? 'active' : ''}`}
-            onClick={() => setActiveTab('venues')}
+            onClick={() => { setActiveTab('venues'); setIsSidebarOpen(false); }}
           >
             <MapPinned size={20} /> 場地管理
           </button>
           <button 
             className={`admin-nav-btn ${activeTab === 'announcements' ? 'active' : ''}`}
-            onClick={() => setActiveTab('announcements')}
+            onClick={() => { setActiveTab('announcements'); setIsSidebarOpen(false); }}
           >
             <Bell size={20} /> 系統公告
           </button>
           <button 
             className={`admin-nav-btn ${activeTab === 'feedbacks' ? 'active' : ''}`}
-            onClick={() => setActiveTab('feedbacks')}
+            onClick={() => { setActiveTab('feedbacks'); setIsSidebarOpen(false); }}
           >
             <MessageSquareText size={20} /> 使用者回饋
           </button>
           <button 
             className={`admin-nav-btn ${activeTab === 'user_management' ? 'active' : ''}`}
-            onClick={() => setActiveTab('user_management')}
+            onClick={() => { setActiveTab('user_management'); setIsSidebarOpen(false); }}
           >
             <Users size={20} /> 會員管理
           </button>
           <button 
             className={`admin-nav-btn ${activeTab === 'demo_games' ? 'active' : ''}`}
-            onClick={() => setActiveTab('demo_games')}
+            onClick={() => { setActiveTab('demo_games'); setIsSidebarOpen(false); }}
           >
             <Wrench size={20} /> 房間狀態調整
           </button>
@@ -861,14 +891,14 @@ function Admin() {
       </aside>
 
       {/* 主內容區 */}
-      <main style={{ flex: 1, padding: '40px', overflowY: 'auto' }}>
+      <main className="admin-main">
         
         {/* 數據分析 Tab */}
         {activeTab === 'dashboard' && (
           <div>
             <h2 style={{ marginBottom: '32px' }}>揪團數據統計</h2>
             
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px', marginBottom: '40px' }}>
+            <div className="admin-stats-grid">
               <div className="stat-card" style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
                 <div style={{ color: '#64748b', fontSize: '14px', fontWeight: '700', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <TrendingUp size={16} color="#7995a5" /> 今日活躍人數
@@ -892,7 +922,7 @@ function Admin() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '24px' }}>
+            <div className="admin-charts-grid">
               <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
                 <h3 style={{ marginBottom: '20px' }}>近期活動熱度</h3>
                 <div style={{ height: '200px', display: 'flex', alignItems: 'flex-end', gap: '12px', paddingBottom: '20px' }}>
@@ -937,7 +967,7 @@ function Admin() {
             </div>
 
             {/* 縣市/區域 篩選查詢 */}
-            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', backgroundColor: 'white', padding: '16px 24px', borderRadius: '12px', border: '1px solid #e2e8f0', alignItems: 'center' }}>
+            <div className="admin-filter-bar">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '14px', fontWeight: '700', color: '#64748b' }}>篩選縣市：</span>
                 <select 
@@ -1000,7 +1030,7 @@ function Admin() {
               </button>
             </div>
 
-            <div style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+            <div className="admin-table-responsive" style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead style={{ backgroundColor: '#f1f5f9' }}>
                   <tr>
@@ -1049,7 +1079,7 @@ function Admin() {
 
             <div id="add-venue-form" style={{ marginTop: '40px', backgroundColor: 'white', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
               <h3 style={{ marginBottom: '24px' }}>{editingVenueId ? "編輯場地資料" : "新增場地資料"}</h3>
-              <form onSubmit={handleAddVenue} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <form onSubmit={handleAddVenue} className="admin-form-grid">
                 <div className="form-group">
                   <label className="form-label">場地名稱</label>
                   <input required type="text" className="form-input" placeholder="例如：板橋第二運動場" value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} />
@@ -1128,7 +1158,7 @@ function Admin() {
               <h2 style={{ margin: 0 }}>系統公告管理</h2>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '32px' }}>
+            <div className="admin-announcement-grid">
               {/* 發佈公告表單 */}
               <div style={{ backgroundColor: 'white', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0', height: 'fit-content' }}>
                 <h3 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}><MessageSquarePlus size={20} /> 發佈新公告</h3>
@@ -1363,13 +1393,13 @@ function Admin() {
                     </span>
                   </div>
                   
-                  <p style={{ margin: 0, fontSize: '15px', color: '#475569', lineHeight: '1.6', paddingLeft: '52px' }}>
+                  <p className="feedback-content-text" style={{ margin: 0, fontSize: '15px', color: '#475569', lineHeight: '1.6' }}>
                     {f.content}
                   </p>
 
                   {/* 如果是已處理，顯示回覆內容 */}
                   {f.is_handled && (
-                    <div style={{ marginTop: '16px', backgroundColor: '#f8fafc', padding: '16px', borderRadius: '12px', borderLeft: '4px solid #10b981', paddingLeft: '20px', marginLeft: '52px' }}>
+                    <div className="feedback-reply-area" style={{ marginTop: '16px', backgroundColor: '#f8fafc', padding: '16px', borderRadius: '12px', borderLeft: '4px solid #10b981', paddingLeft: '20px' }}>
                       <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#1e293b', marginBottom: '4px' }}>管理者的回覆：</div>
                       <div style={{ fontSize: '14px', color: '#475569', whiteSpace: 'pre-wrap' }}>{f.admin_reply || '無回覆內容。'}</div>
                     </div>
@@ -1377,7 +1407,7 @@ function Admin() {
 
                   {/* 填寫回覆區塊 (待處理時展開) */}
                   {replyingFeedbackId === f.id && (
-                    <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '52px' }}>
+                    <div className="feedback-reply-area" style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <textarea 
                         placeholder="請輸入給使用者的回覆內容（送出後會自動發送通知給使用者）..."
                         value={replyText}
@@ -1475,7 +1505,7 @@ function Admin() {
               )}
             </form>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '32px', alignItems: 'start' }}>
+            <div className="admin-user-mgmt-grid">
               
               {/* 左側：會員清單 */}
               <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
@@ -1570,7 +1600,7 @@ function Admin() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 {umSelectedUser ? (
                   <div style={{ backgroundColor: 'white', padding: '28px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
+                    <div className="admin-user-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                         {umSelectedUser.avatar_url ? (
                           <SafeImage src={umSelectedUser.avatar_url} alt="avatar" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #e2e8f0' }} />
@@ -1613,7 +1643,7 @@ function Admin() {
                     </div>
 
                     {/* 基本資料列表 */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '28px' }}>
+                    <div className="admin-form-grid" style={{ marginBottom: '28px' }}>
                       <div>
                         <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>電子信箱</div>
                         <div style={{ fontSize: '14px', color: '#334155', fontWeight: '700', marginTop: '2px', wordBreak: 'break-all' }}>{umSelectedUser.email}</div>
@@ -1651,14 +1681,14 @@ function Admin() {
                       <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <TrendingUp size={16} /> 調整信譽積分
                       </h4>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div className="admin-reputation-flex" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                         <div>
                           <div style={{ fontSize: '12px', color: '#94a3b8' }}>目前信譽分數</div>
                           <div style={{ fontSize: '24px', fontWeight: '800', color: getReputationStatus(umSelectedUser.credit_point ?? 90).color }}>
                             {umSelectedUser.credit_point ?? 90}
                           </div>
                         </div>
-                        <div style={{ borderLeft: '1px solid #cbd5e1', height: '40px', margin: '0 8px' }}></div>
+                        <div className="admin-reputation-divider" style={{ borderLeft: '1px solid #cbd5e1', height: '40px', margin: '0 8px' }}></div>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <input
@@ -1875,7 +1905,7 @@ function Admin() {
                   maxHeight: '650px', 
                   overflowY: 'auto', 
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
                   gap: '16px', 
                   paddingRight: '6px',
                   scrollbarWidth: 'thin'
