@@ -27,6 +27,10 @@ SECRET_KEY = 'django-insecure-!#8^d=@b09*&yf+_&8c$z9t(tfwhvossgf@d!k=$6gu#j9++o-
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.ngrok-free.dev",
+    "https://*.trycloudflare.com",
+]
 
 
 # Application definition
@@ -82,7 +86,7 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 import socket
 
-def check_mysql_availability(host='localhost', port=3306, timeout=1.0):
+def check_mysql_availability(host='26.232.235.50', port=3306, timeout=1.0):
     """
     Check if MySQL driver is installed and if the port is open.
     """
@@ -237,4 +241,18 @@ from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "ngrok-skip-browser-warning",
 ]
+
+# Media files configurations
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Fix Windows registry mime-type mapping issues for image files
+import mimetypes
+mimetypes.add_type("image/png", ".png", True)
+mimetypes.add_type("image/jpeg", ".jpg", True)
+mimetypes.add_type("image/jpeg", ".jpeg", True)
+mimetypes.add_type("image/gif", ".gif", True)
+mimetypes.add_type("image/webp", ".webp", True)
+
+
 

@@ -7,6 +7,7 @@ import weatherApi from '../api/weather';
 import adminApi from '../api/admin';
 import usersApi from '../api/users';
 import venuesApi from '../api/venues';
+import SafeImage from '../components/SafeImage';
 import '../App.css';
 
 function Home() {
@@ -18,9 +19,12 @@ function Home() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAqiInfo, setShowAqiInfo] = useState(false);
   const [showLevelInfo, setShowLevelInfo] = useState(false);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [systemAnnouncements, setSystemAnnouncements] = useState([]);
   const [aqi, setAqi] = useState('--');
   const [temperature, setTemperature] = useState('--');
+  const [weatherLocation, setWeatherLocation] = useState('桃園市');
   const [isPageLoading, setIsPageLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
 
@@ -42,7 +46,8 @@ function Home() {
           notificationsApi.getNotifications(),
           weatherApi.getWeatherAqi(),
           usersApi.getUserProfile(),
-          venuesApi.getCourts()
+          venuesApi.getCourts(),
+          adminApi.getSystemAnnouncements()
         ]);
         
         const gamesResult = results[0].status === 'fulfilled' ? results[0].value : [];
@@ -50,6 +55,25 @@ function Home() {
         const weatherResult = results[2].status === 'fulfilled' ? results[2].value : {};
         const userProfileResult = results[3].status === 'fulfilled' ? results[3].value : null;
         const venuesResult = results[4].status === 'fulfilled' ? results[4].value : [];
+        const announcementsResult = results[5]?.status === 'fulfilled' ? results[5].value : [];
+        
+        const rawAnnouncements = Array.isArray(announcementsResult) ? announcementsResult : (announcementsResult.results || []);
+        const mappedAnnouncements = rawAnnouncements.map(a => {
+          const photoRegex = /\n\n\[Photos\]\n([^\n]+)/;
+          const match = String(a.content || '').match(photoRegex);
+          let cleanContent = a.content || '';
+          let photo = [];
+          if (match) {
+            photo = match[1].split(',').filter(Boolean);
+            cleanContent = cleanContent.replace(photoRegex, '');
+          }
+          return {
+            ...a,
+            content: cleanContent,
+            photo: photo
+          };
+        });
+        setSystemAnnouncements(mappedAnnouncements);
         
         if (userProfileResult) {
           setUserProfile(userProfileResult);
@@ -102,9 +126,9 @@ function Home() {
           const originalLevel = party.level || party.target_level || 'C';
           const rawLevel = reverseLevelMap[originalLevel] || originalLevel;
           let venueStatus = 'pending';
-          if (party.booking_status === '已佔到/已預約') {
+          if (party.booking_status === '已佔到/已預約' || party.booking_status === '已確認/已預約' || party.booking_status === '已預約/已確認' || party.booking_status === 'confirmed' || party.game_note === 'CONFIRMED') {
             venueStatus = 'confirmed';
-          } else if (party.booking_status === '未佔到/未預約') {
+          } else if (party.booking_status === '未佔到/未預約' || party.booking_status === '未借到場地' || party.booking_status === 'failed' || party.game_note === 'FAILED') {
             venueStatus = 'failed';
           }
           
@@ -123,7 +147,7 @@ function Home() {
             currentWaitlist: party.currentWaitlist ?? party.current_waitlist ?? 0,
             maxWaitlist: party.maxWaitlist ?? party.max_waitlist ?? 2,
             description: party.game_note || party.description,
-            game_note: party.game_note,
+            venue_note: party.venue_note || party.game_note,
             participants: party.participants || [],
             participant_ids: party.participant_ids || [],
             waitlist_ids: party.waitlist_ids || [],
@@ -152,6 +176,7 @@ function Home() {
         setNotifications(validNotifications);
         setAqi(weatherResult?.aqi ?? '--');
         setTemperature(weatherResult?.temperature ?? '--');
+        if (weatherResult?.location) setWeatherLocation(weatherResult.location);
       } catch (error) {
         console.error('Home fetchData error:', error);
       } finally {
@@ -162,6 +187,69 @@ function Home() {
     fetchData();
   }, []);
 
+  const [regions, setRegions] = useState(taiwanRegions);
+  const [facilitiesMap, setFacilitiesMap] = useState(venueFacilities);
+
+  useEffect(() => {
+    console.log("Home component mounted. Initial regions keys:", Object.keys(regions));
+    fetch('/api/venues/')
+      .then(res => {
+        console.log("Fetch venues response status:", res.status);
+        if (!res.ok) throw new Error('Failed to fetch venues');
+        return res.json();
+      })
+      .then(data => {
+        console.log("Fetch venues data:", data);
+        if (data && Array.isArray(data) && data.length > 0) {
+          // 複製一份前端靜態資料作為基礎，並將後端資料合併進去
+          const mergedRegions = JSON.parse(JSON.stringify(taiwanRegions));
+          const mergedFacilitiesMap = { ...venueFacilities };
+
+          data.forEach(v => {
+            const city = v.address_detail?.city || '其他縣市';
+            const district = v.address_detail?.district || '其他區';
+            const name = v.name;
+
+            if (!mergedRegions[city]) {
+              mergedRegions[city] = {};
+            }
+            if (!mergedRegions[city][district]) {
+              mergedRegions[city][district] = [];
+            }
+            if (!mergedRegions[city][district].includes(name)) {
+              // 把後端資料塞到該區最前面
+              mergedRegions[city][district].unshift(name);
+            }
+
+            mergedFacilitiesMap[name] = v.facilities || ['基本設施'];
+          });
+
+          // 確保每個區域選單中都有「其他」選項
+          Object.keys(mergedRegions).forEach(city => {
+            Object.keys(mergedRegions[city]).forEach(district => {
+              if (!mergedRegions[city][district].includes('其他')) {
+                mergedRegions[city][district].push('其他');
+              }
+            });
+          });
+
+          setRegions(mergedRegions);
+          setFacilitiesMap(mergedFacilitiesMap);
+
+          // 更新初始選單選項為合併後的首個位置
+          const firstCity = Object.keys(mergedRegions)[0] || '桃園市';
+          const firstDistrict = Object.keys(mergedRegions[firstCity] || {})[0] || '桃園區';
+          const firstVenue = (mergedRegions[firstCity]?.[firstDistrict] || [])[0] || '其他';
+          setNewParty(prev => ({
+            ...prev,
+            city: firstCity,
+            district: firstDistrict,
+            venue: firstVenue
+          }));
+        }
+      })
+      .catch(err => console.error('Failed to load backend venues, using local fallbacks:', err));
+  }, []);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
@@ -216,30 +304,6 @@ function Home() {
       }
     }
 
-    // 檢查時間驗證
-    const selectedTime = new Date(newParty.time);
-    const now = new Date();
-    if (selectedTime < now) {
-      alert('活動時間不能設定在過去喔！');
-      return;
-    }
-
-    const priceNum = parseFloat(newParty.price);
-    if (isNaN(priceNum) || priceNum < 0 || priceNum > 10000) {
-      alert('費用金額必須在 0 到 10,000 之間喔！');
-      return;
-    }
-
-    // 程度驗證
-    const rankValue = { 'C': 1, 'B': 2, 'A': 3, 'S': 4 };
-    const requiredRank = {
-      '休閒': 1,
-      '業餘': 2,
-      '高手': 3
-    };
-    const userLevels = userProfile?.levels || {};
-    const userLevelInSport = userLevels[newParty.type] || 'C'; // 若未設定則預設為最低 C
-
     if (rankValue[userLevelInSport] < requiredRank[newParty.level]) {
       alert(`你的${newParty.type}程度為 ${userLevelInSport}，無法發起${newParty.level}喔！`);
       return;
@@ -251,12 +315,6 @@ function Home() {
       '排球': 3,
       '桌球': 4,
       '麻將': 5
-    };
-
-    const levelMap = {
-      '休閒': 'C',
-      '業餘': 'B',
-      '高手': 'A'
     };
 
     const venue_id = venueMap[newParty.venue] || 1;
@@ -394,8 +452,10 @@ function Home() {
 
   const handleCityChange = (e) => {
     const selectedCity = e.target.value;
-    const firstDistrict = taiwanRegions[selectedCity] ? Object.keys(taiwanRegions[selectedCity])[0] : '';
-    const firstVenue = taiwanRegions[selectedCity] && taiwanRegions[selectedCity][firstDistrict] ? taiwanRegions[selectedCity][firstDistrict][0] : '';
+    const districts = regions[selectedCity] || {};
+    const firstDistrict = Object.keys(districts)[0] || '';
+    const venuesList = districts[firstDistrict] || [];
+    const firstVenue = venuesList[0] || '其他';
     setNewParty({
       ...newParty,
       city: selectedCity,
@@ -406,12 +466,88 @@ function Home() {
 
   const handleDistrictChange = (e) => {
     const selectedDistrict = e.target.value;
-    const firstVenue = taiwanRegions[newParty.city] && taiwanRegions[newParty.city][selectedDistrict] ? taiwanRegions[newParty.city][selectedDistrict][0] : '';
+    const venuesList = regions[newParty.city]?.[selectedDistrict] || [];
+    const firstVenue = venuesList[0] || '其他';
     setNewParty({
       ...newParty,
       district: selectedDistrict,
       venue: firstVenue
     });
+  };
+
+  const renderModalContent = () => {
+    if (!selectedAnnouncement) return null;
+    const content = selectedAnnouncement.content;
+    
+    // 1. 新的結構化格式
+    if (selectedAnnouncement.title === '系統通知' && content.includes('[Feedback]\n') && content.includes('[Reply]\n')) {
+      const parts = content.split('\n');
+      const feedbackHeaderIdx = parts.indexOf('[Feedback]');
+      const replyHeaderIdx = parts.indexOf('[Reply]');
+      
+      let feedbackText = '';
+      let replyText = '';
+      
+      if (feedbackHeaderIdx !== -1 && replyHeaderIdx !== -1) {
+        feedbackText = parts.slice(feedbackHeaderIdx + 1, replyHeaderIdx).join('\n').trim();
+        replyText = parts.slice(replyHeaderIdx + 1).join('\n').trim();
+      } else {
+        return <div style={{ whiteSpace: 'pre-wrap' }}>{content}</div>;
+      }
+      
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left', marginTop: '10px' }}>
+          <div style={{ padding: '14px 18px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', marginBottom: '6px' }}>您的意見回饋：</div>
+            <div style={{ fontSize: '14px', color: '#334155', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{feedbackText}</div>
+          </div>
+          <div style={{ padding: '14px 18px', backgroundColor: '#f0fdf4', borderRadius: '12px', border: '1px solid #bbf7d0', borderLeft: '4px solid #22c55e' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534', marginBottom: '6px' }}>
+              💬 管理員回覆：
+            </div>
+            <div style={{ fontSize: '14px', color: '#14532d', lineHeight: '1.5', whiteSpace: 'pre-wrap', fontWeight: '500' }}>{replyText}</div>
+          </div>
+        </div>
+      );
+    }
+    
+    // 2. 舊的單行格式 (相容先前產生的舊資料)
+    if (selectedAnnouncement.title === '系統通知' && content.startsWith('【回饋處理通知】') && content.includes('管理員回覆：')) {
+      const cleanContent = content.replace('【回饋處理通知】', '').trim();
+      const replyPrefix = '管理員回覆：';
+      const prefixIndex = cleanContent.indexOf(replyPrefix);
+      
+      let infoText = '';
+      let replyText = '';
+      
+      if (prefixIndex !== -1) {
+        infoText = cleanContent.substring(0, prefixIndex).trim();
+        replyText = cleanContent.substring(prefixIndex + replyPrefix.length).trim();
+      } else {
+        infoText = cleanContent;
+      }
+      
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left', marginTop: '10px' }}>
+          {infoText && (
+            <div style={{ padding: '14px 18px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', marginBottom: '6px' }}>處理狀態：</div>
+              <div style={{ fontSize: '14px', color: '#334155', lineHeight: '1.5' }}>{infoText}</div>
+            </div>
+          )}
+          {replyText && (
+            <div style={{ padding: '14px 18px', backgroundColor: '#f0fdf4', borderRadius: '12px', border: '1px solid #bbf7d0', borderLeft: '4px solid #22c55e' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534', marginBottom: '6px' }}>
+                💬 管理員回覆：
+              </div>
+              <div style={{ fontSize: '14px', color: '#14532d', lineHeight: '1.5', whiteSpace: 'pre-wrap', fontWeight: '500' }}>{replyText}</div>
+            </div>
+          )}
+        </div>
+      );
+    }
+    
+    return <div style={{ whiteSpace: 'pre-wrap' }}>{content}</div>;
   };
 
   return (
@@ -443,7 +579,7 @@ function Home() {
                       const unreadNotifs = notifications.filter(n => !n.read);
                       if (unreadNotifs.length > 0) {
                         try {
-                          await Promise.all(unreadNotifs.map(n => notificationsApi.markAsRead(n.id)));
+                           await Promise.all(unreadNotifs.map(n => notificationsApi.markAsRead(n.id)));
                         } catch (e) { console.error('Failed to mark all as read', e); }
                       }
                       setNotifications(notifications.map(n => ({...n, read: true})));
@@ -457,7 +593,7 @@ function Home() {
                     notifications.map(n => (
                       <div 
                         key={n.id} 
-                        style={{ padding: '12px 16px', borderBottom: '1px solid #f8fafc', display: 'flex', gap: '12px', cursor: 'pointer', backgroundColor: n.read ? 'white' : '#f0f9ff' }}
+                        style={{ padding: '12px 16px', borderBottom: '1px solid #f8fafc', display: 'flex', gap: '12px', cursor: 'pointer', backgroundColor: n.read ? 'white' : '#f0f9ff', alignItems: 'center' }}
                         onClick={async () => {
                           if (!n.read) {
                             try {
@@ -465,18 +601,89 @@ function Home() {
                             } catch (e) { console.error('Failed to mark as read', e); }
                           }
                           setNotifications(notifications.map(item => item.id === n.id ? {...item, read: true} : item));
+                          
+                          // 處理點擊通知以彈窗展開
+                          if (n.text) {
+                            if (n.text.includes('【系統公告】')) {
+                              const refMatch = n.text.match(/\(Ref:\s*#(\d+)\)/);
+                              let title = '系統公告';
+                              let content = n.text.replace('【系統公告】', '');
+                              let photos = [];
+                              
+                              if (refMatch) {
+                                const announcementId = Number(refMatch[1]);
+                                const found = systemAnnouncements.find(a => a.id === announcementId);
+                                if (found) {
+                                  title = found.title;
+                                  content = found.content;
+                                  photos = found.photo || [];
+                                }
+                              } else {
+                                const cleanText = n.text.replace('【系統公告】', '');
+                                const colonIndex = cleanText.indexOf('：');
+                                if (colonIndex !== -1) {
+                                  title = cleanText.substring(0, colonIndex).trim();
+                                  content = cleanText.substring(colonIndex + 1).trim();
+                                }
+                              }
+                              setSelectedAnnouncement({ title, content, time: n.time, photos });
+                            } else {
+                              // 其他所有通知也支援以「系統通知」彈窗展開，方便查閱完整回覆
+                              setSelectedAnnouncement({ 
+                                title: '系統通知', 
+                                content: n.text, 
+                                time: n.time, 
+                                photos: [] 
+                              });
+                            }
+                          }
                         }}
                       >
-                        <div style={{ width: '8px', display: 'flex', justifyContent: 'center', paddingTop: '6px' }}>
+                        <div style={{ width: '8px', display: 'flex', justifyContent: 'center' }}>
                           {!n.read && <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#0284c7' }}></div>}
                         </div>
                         <div style={{ flex: 1 }}>
-                          <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: n.read ? '#64748b' : '#0f172a', lineHeight: '1.4' }}>{n.text}</p>
+                          <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: n.read ? '#64748b' : '#0f172a', lineHeight: '1.4' }}>
+                            {n.text.startsWith('【回饋處理通知】') ? '【回饋處理通知】' : (n.text.includes('\n') ? n.text.split('\n')[0] : n.text)}
+                          </p>
                           <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{n.time}</p>
                         </div>
+                        {/* 已讀後顯示刪除通知按鈕 */}
+                        {n.read && (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation(); // 阻止觸發外層已讀與彈窗事件
+                              if (window.confirm('確定要刪除此通知嗎？')) {
+                                try {
+                                  await notificationsApi.deleteNotification(n.id);
+                                  setNotifications(notifications.filter(item => item.id !== n.id));
+                                } catch (err) {
+                                  console.error('Failed to delete notification', err);
+                                  alert('刪除通知失敗，請稍後再試。');
+                                }
+                              }
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#94a3b8',
+                              cursor: 'pointer',
+                              fontSize: '18px',
+                              fontWeight: 'normal',
+                              padding: '4px 8px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginLeft: 'auto'
+                            }}
+                            title="刪除通知"
+                          >
+                            &times;
+                          </button>
+                        )}
                       </div>
                     ))
-                  ) : (
+                   ) : (
                     <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>目前沒有新通知</div>
                   )}
                 </div>
@@ -497,7 +704,7 @@ function Home() {
             <h2 style={{ marginBottom: 0 }}>揪團大廳</h2>
             <div className="weather-widget">
               <span className="weather-icon" style={{ display: 'flex' }}><CloudSun size={18} /></span>
-              <span>桃園市 {temperature === '--' ? '--' : `${temperature}°C`}</span>
+              <span>{weatherLocation} {temperature === '--' ? '--' : `${temperature}°C`}</span>
               <div 
                 style={{ position: 'relative', marginLeft: '8px', paddingLeft: '12px', borderLeft: '1px solid #cbd5e1', color: '#64748b', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}
                 onMouseEnter={() => setShowAqiInfo(true)}
@@ -550,7 +757,7 @@ function Home() {
             {isPageLoading && <span style={{ color: '#94a3b8' }}>載入中...</span>}
             <select className="region-select" value={selectedFilterRegion} onChange={e => setSelectedFilterRegion(e.target.value)}>
               <option value="all">所有地區</option>
-              {Object.keys(taiwanRegions).map(city => (
+              {Object.keys(regions).map(city => (
                 <option key={city} value={city}>{city}</option>
               ))}
             </select>
@@ -575,8 +782,20 @@ function Home() {
             .filter(party => selectedCategory === '全部' || party.type === selectedCategory)
             .sort((a, b) => {
               const currentUserId = localStorage.getItem('user_id');
-              const isAHost = currentUserId && (a.creator_id && String(a.creator_id) === String(currentUserId));
-              const isBHost = currentUserId && (b.creator_id && String(b.creator_id) === String(currentUserId));
+              const isAHost = currentUserId && (
+                (a.creator_id && String(a.creator_id) === String(currentUserId)) || 
+                (a.participants?.[0]?.id && String(a.participants[0].id) === String(currentUserId)) || 
+                a.participants?.[0] === '我 (主揪)' || 
+                a.participants?.[0] === '主揪人' ||
+                (a.user_id && String(a.user_id) === String(currentUserId))
+              );
+              const isBHost = currentUserId && (
+                (b.creator_id && String(b.creator_id) === String(currentUserId)) || 
+                (b.participants?.[0]?.id && String(b.participants[0].id) === String(currentUserId)) || 
+                b.participants?.[0] === '我 (主揪)' || 
+                b.participants?.[0] === '主揪人' ||
+                (b.user_id && String(b.user_id) === String(currentUserId))
+              );
 
               if (isAHost && !isBHost) return -1;
               if (!isAHost && isBHost) return 1;
@@ -584,9 +803,21 @@ function Home() {
             })
             .map(party => {
             const currentUserId = localStorage.getItem('user_id');
-            const isHost = currentUserId && (party.creator_id && String(party.creator_id) === String(currentUserId));
-            const isParticipant = currentUserId && (party.participant_ids?.some(id => String(id) === String(currentUserId)));
-            const isWaitlisted = currentUserId && (party.waitlist_ids?.some(id => String(id) === String(currentUserId)));
+            const isHost = currentUserId && (
+              (party.creator_id && String(party.creator_id) === String(currentUserId)) || 
+              (party.participants?.[0]?.id && String(party.participants[0].id) === String(currentUserId)) || 
+              party.participants?.[0] === '我 (主揪)' || 
+              party.participants?.[0] === '主揪人' ||
+              (party.user_id && String(party.user_id) === String(currentUserId))
+            );
+            const isParticipant = currentUserId && (
+              party.participants?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
+              party.participant_ids?.some(id => String(id) === String(currentUserId))
+            );
+            const isWaitlisted = currentUserId && (
+              party.waitlist?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
+              party.waitlist_ids?.some(id => String(id) === String(currentUserId))
+            );
 
             const isFull = party.currentPlayers >= party.maxPlayers;
             const isWaitlistFull = party.currentWaitlist >= party.maxWaitlist;
@@ -638,8 +869,6 @@ function Home() {
                 badgeStatusColor = '#ef4444';
               }
             }
-
-
 
             return (
               <div key={party.id} className={`party-card clickable-card ${isHost ? 'hosted-party' : ''}`} onClick={() => navigate(`/party/${party.id}`, { state: { party } })}>
@@ -803,7 +1032,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (縣市)</label>
                     <select className="form-input" value={newParty.city} onChange={handleCityChange}>
-                      {Object.keys(taiwanRegions).map(city => (
+                      {Object.keys(regions).map(city => (
                         <option key={city} value={city}>{city}</option>
                       ))}
                     </select>
@@ -811,7 +1040,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (區域)</label>
                     <select className="form-input" value={newParty.district} onChange={handleDistrictChange}>
-                      {Object.keys(taiwanRegions[newParty.city] || {}).map(dist => (
+                      {Object.keys(regions[newParty.city] || {}).map(dist => (
                         <option key={dist} value={dist}>{dist}</option>
                       ))}
                     </select>
@@ -819,7 +1048,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (場館/球場)</label>
                     <select className="form-input" value={newParty.venue} onChange={e => setNewParty({...newParty, venue: e.target.value})}>
-                      {(taiwanRegions[newParty.city]?.[newParty.district] || []).map(v => (
+                      {(regions[newParty.city]?.[newParty.district] || []).map(v => (
                         <option key={v} value={v}>{v}</option>
                       ))}
                     </select>
@@ -905,6 +1134,35 @@ function Home() {
               </div>
               <button type="submit" className="login-button" style={{ marginTop: '10px' }}>送出回饋</button>
             </form>
+          </div>
+        </div>
+      )}
+      {/* 系統公告彈窗 Modal */}
+      {selectedAnnouncement && (
+        <div className="modal-overlay" onClick={() => setSelectedAnnouncement(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                📢 {selectedAnnouncement.title}
+              </h3>
+              <button className="modal-close" onClick={() => setSelectedAnnouncement(null)}>×</button>
+            </div>
+            <div style={{ maxHeight: '300px', overflowY: 'auto', color: '#475569', fontSize: '15px', lineHeight: '1.6', margin: '20px 0', paddingRight: '8px', textAlign: 'left' }}>
+              {renderModalContent()}
+              {selectedAnnouncement.photos && selectedAnnouncement.photos.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+                  {selectedAnnouncement.photos.map((p, idx) => (
+                    <SafeImage key={idx} src={p} alt={`Announcement Photo ${idx+1}`} style={{ width: '100%', maxHeight: '200px', objectFit: 'contain', borderRadius: '8px', border: '1px solid #e2e8f0' }} />
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
+              <span style={{ fontSize: '12px', color: '#94a3b8' }}>發布時間：{selectedAnnouncement.time}</span>
+              <button className="btn-primary" onClick={() => setSelectedAnnouncement(null)} style={{ padding: '6px 16px', fontSize: '14px', margin: 0 }}>
+                關閉
+              </button>
+            </div>
           </div>
         </div>
       )}

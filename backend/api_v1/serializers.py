@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    User, Sport, UserSportLevel, Address, Venue, Court, GameMatch, 
+    User, Sport, UserSportLevel, Address, Facility, Venue, Court, GameMatch, 
     MatchParticipant, FavoriteGame, 
     PenaltyRule, Report, Blacklist, Notification, GameBulletin,
     Feedback, Announcement
@@ -18,10 +18,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source='id', read_only=True)
     age = serializers.ReadOnlyField()
     levels = serializers.SerializerMethodField()
+    avatar = serializers.CharField(source='avatar_url', required=False, allow_null=True, allow_blank=True)
 
     class Meta:
         model = User
-        fields = ('user_id', 'email', 'name', 'phone', 'birthday', 'gender', 'avatar_url', 'bio', 'age', 'credit_point', 'role', 'levels', 'line_id', 'instagram')
+        fields = ('user_id', 'email', 'name', 'phone', 'birthday', 'gender', 'avatar', 'avatar_url', 'bio', 'age', 'credit_point', 'role', 'levels', 'line_id', 'instagram')
 
     def get_levels(self, obj):
         res = {}
@@ -36,9 +37,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return res
 
 class SportSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source='chinese_name', read_only=True)
+
     class Meta:
         model = Sport
-        fields = '__all__'
+        fields = ('id', 'name')
 
 class UserSportLevelSerializer(serializers.ModelSerializer):
     sport_name = serializers.CharField(source='sport.chinese_name', read_only=True)
@@ -55,19 +58,144 @@ class AddressSerializer(serializers.ModelSerializer):
 class VenueSerializer(serializers.ModelSerializer):
     address_detail = AddressSerializer(source='address', read_only=True)
     facilities = serializers.SlugRelatedField(many=True, read_only=True, slug_field='name')
-
+    # 1. 定義寫入專用的唯寫虛擬欄位 (Write-Only Fields)
+    city = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    district = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    street_line = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    sport_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    court_count = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     class Meta:
         model = Venue
-        fields = ('id', 'name', 'address', 'address_detail', 'opening_hours', 'types', 'facilities', 'latitude', 'longitude')
+        fields = (
+            'id', 'name', 'address', 'address_detail', 'opening_hours', 'types', 
+            'facilities', 'latitude', 'longitude',
+            'city', 'district', 'street_line', 'sport_id', 'court_count'
+        )
+    # 2. 於 representation 中動態加入 court_count，避免欄位名稱衝突
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        # 統計關聯的球場數量
+        representation['court_count'] = instance.courts.count()
+        # 動態加入讀取的地址欄位，讓前端可以直接讀取 v.city 和 v.district
+        if instance.address:
+            representation['city'] = instance.address.city
+            representation['district'] = instance.address.district
+            representation['street_line'] = instance.address.street_line
+        else:
+            representation['city'] = ""
+            representation['district'] = ""
+            representation['street_line'] = ""
+        return representation
+    # 3. 處理 POST 建立邏輯
+    def create(self, validated_data):
+        city = validated_data.pop('city', None)
+        district = validated_data.pop('district', None)
+        street_line = validated_data.pop('street_line', None)
+        sport_id = validated_data.pop('sport_id', None)
+        court_count = validated_data.pop('court_count', None)
+        # 自動處理 Address 外鍵 (若不存在則新增)
+        if city or district or street_line:
+            address_obj, created = Address.objects.get_or_create(
+                city=city or '',
+                district=district or '',
+                street_line=street_line or ''
+            )
+            validated_data['address'] = address_obj
+        # 建立場館
+        venue = super().create(validated_data)
+        # 根據 court_count 數量與 sport_id 自動生成球場
+        if court_count and sport_id:
+            try:
+                sport_obj = Sport.objects.get(id=sport_id)
+                for _ in range(court_count):
+                    court = Court.objects.create(venue=venue)
+                    court.sports.add(sport_obj)
+            except Sport.DoesNotExist:
+                pass
+        # 處理 facilities 寫入
+        facilities_data = self.initial_data.get('facilities', None)
+        if facilities_data is not None:
+            for facility_name in facilities_data:
+                facility_obj, created = Facility.objects.get_or_create(name=facility_name)
+                venue.facilities.add(facility_obj)
+        return venue
+    # 4. 處理 PATCH / PUT 更新邏輯
+    def update(self, instance, validated_data):
+        city = validated_data.pop('city', None)
+        district = validated_data.pop('district', None)
+        street_line = validated_data.pop('street_line', None)
+        sport_id = validated_data.pop('sport_id', None)
+        court_count = validated_data.pop('court_count', None)
+        # 若有提供地址資訊，進行地址更新或重新綁定
+        if city is not None or district is not None or street_line is not None:
+            current_address = instance.address
+            new_city = city if city is not None else (current_address.city if current_address else '')
+            new_dist = district if district is not None else (current_address.district if current_address else '')
+            new_street = street_line if street_line is not None else (current_address.street_line if current_address else '')
+            
+            address_obj, created = Address.objects.get_or_create(
+                city=new_city,
+                district=new_dist,
+                street_line=new_street
+            )
+            validated_data['address'] = address_obj
+        # 更新場館資訊
+        venue = super().update(instance, validated_data)
+        # 同步球場數量與球場運動種類
+        if court_count is not None or sport_id is not None:
+            try:
+                sport_obj = None
+                if sport_id is not None:
+                    sport_obj = Sport.objects.get(id=sport_id)
+                
+                current_courts = list(venue.courts.all())
+                current_count = len(current_courts)
+                
+                # 如果要增設球場但沒有提供 sport_id，優先從現有球場取得運動種類
+                if court_count is not None and current_count < court_count and sport_obj is None:
+                    if current_count > 0:
+                        sport_obj = current_courts[0].sports.first()
+                    if sport_obj is None:
+                        sport_obj = Sport.objects.first()
+                        
+                # 處理球場數量的增刪
+                if court_count is not None:
+                    if current_count < court_count:
+                        for _ in range(court_count - current_count):
+                            court = Court.objects.create(venue=venue)
+                            if sport_obj:
+                                court.sports.add(sport_obj)
+                    elif current_count > court_count:
+                        courts_to_delete = current_courts[court_count:]
+                        for c in courts_to_delete:
+                            c.delete()
+                            
+                # 如果有提供 sport_id，確保所有剩餘的球場均更新為指定的運動種類
+                if sport_id is not None and sport_obj is not None:
+                    for court in venue.courts.all():
+                        court.sports.set([sport_obj])
+            except Sport.DoesNotExist:
+                pass
+        # 處理 facilities 更新
+        facilities_data = self.initial_data.get('facilities', None)
+        if facilities_data is not None:
+            venue.facilities.clear()
+            for facility_name in facilities_data:
+                facility_obj, created = Facility.objects.get_or_create(name=facility_name)
+                venue.facilities.add(facility_obj)
+        return venue
 
 
 class CourtSerializer(serializers.ModelSerializer):
     venue_detail = VenueSerializer(source='venue', read_only=True)
-    sports = serializers.SlugRelatedField(many=True, read_only=True, slug_field='name')
+    sports = serializers.SerializerMethodField()
 
     class Meta:
         model = Court
         fields = ('id', 'venue', 'venue_detail', 'name', 'occupied', 'base_price', 'sports')
+
+    def get_sports(self, obj):
+        return [sport.chinese_name for sport in obj.sports.all()]
 
 class MatchParticipantUserSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField(source='user.id')
@@ -255,6 +383,7 @@ def validate_venue_hours(venue, booking_date, time_slot):
 class GameMatchSerializer(serializers.ModelSerializer):
     sport_id = serializers.PrimaryKeyRelatedField(queryset=Sport.objects.all(), source='sport')
     court_id = serializers.PrimaryKeyRelatedField(queryset=Court.objects.all(), source='court', required=False, allow_null=True)
+    venue_id = serializers.IntegerField(source='court.venue.id', read_only=True)
     sport_name = serializers.CharField(source='sport.chinese_name', read_only=True)
     venue_name = serializers.CharField(source='court.venue.name', read_only=True)
     split_price = serializers.ReadOnlyField()
@@ -271,7 +400,8 @@ class GameMatchSerializer(serializers.ModelSerializer):
     cancel_deadline = serializers.DateTimeField(required=False, allow_null=True)
     start_time = serializers.CharField(write_only=True, required=True)
     target_level = serializers.CharField(required=True)
-    duration = serializers.CharField(write_only=True, required=False, default='2 小時')
+    duration = serializers.CharField(required=False, default='2 小時')
+    description = serializers.CharField(source='game_note', required=False, allow_null=True, allow_blank=True)
     announcements = serializers.SerializerMethodField()
 
     def validate_target_level(self, value):
@@ -283,8 +413,8 @@ class GameMatchSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameMatch
         fields = [
-            'id', 'game_name', 'sport_id', 'sport_name', 'court_id', 'venue_name', 'least_players', 'most_players',
-            'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note',
+            'id', 'game_name', 'sport_id', 'sport_name', 'court_id', 'venue_id', 'venue_name', 'least_players', 'most_players',
+            'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note', 'description',
             'total_price', 'split_price', 'deposit_required', 'cancel_deadline',
             'weather', 'air_index', 'booking_status',
             'match_status', 'participants', 'waitlist', 'participant_ids', 'waitlist_ids', 'current_waitlist', 'max_waitlist', 'creator_id', 'distance_km', 'facilities',
@@ -348,8 +478,23 @@ class GameMatchSerializer(serializers.ModelSerializer):
         ret = super().to_representation(instance)
         if instance.time_slot and '-' in instance.time_slot:
             ret['start_time'] = instance.time_slot.split('-')[0].strip()
+            try:
+                t1, t2 = instance.time_slot.split('-')
+                import datetime
+                dt1 = datetime.datetime.strptime(t1.strip(), "%H:%M")
+                dt2 = datetime.datetime.strptime(t2.strip(), "%H:%M")
+                diff_hours = (dt2 - dt1).total_seconds() / 3600.0
+                if diff_hours < 0:
+                    diff_hours += 24
+                if diff_hours.is_integer():
+                    ret['duration'] = f"{int(diff_hours)} 小時"
+                else:
+                    ret['duration'] = f"{diff_hours} 小時"
+            except Exception:
+                ret['duration'] = "2 小時"
         else:
             ret['start_time'] = ""
+            ret['duration'] = "2 小時"
 
         # 人數達標時將招募中狀態轉換為已成團，優化前端顯示效果
         if instance.match_status == 'recruiting' and instance.current_players_count >= instance.least_players: 
@@ -387,7 +532,23 @@ class GameMatchSerializer(serializers.ModelSerializer):
             if not start_time_str and self.instance.time_slot and '-' in self.instance.time_slot:
                 start_time_str = self.instance.time_slot.split('-')[0].strip()
             if not duration_str:
-                duration_str = self.instance.duration
+                if self.instance.time_slot and '-' in self.instance.time_slot:
+                    try:
+                        t1, t2 = self.instance.time_slot.split('-')
+                        import datetime
+                        dt1 = datetime.datetime.strptime(t1.strip(), "%H:%M")
+                        dt2 = datetime.datetime.strptime(t2.strip(), "%H:%M")
+                        diff_hours = (dt2 - dt1).total_seconds() / 3600.0
+                        if diff_hours < 0:
+                            diff_hours += 24
+                        if diff_hours.is_integer():
+                            duration_str = f"{int(diff_hours)} 小時"
+                        else:
+                            duration_str = f"{diff_hours} 小時"
+                    except Exception:
+                        duration_str = '2 小時'
+                else:
+                    duration_str = '2 小時'
             if least_players is None:
                 least_players = self.instance.least_players
             if most_players is None:
