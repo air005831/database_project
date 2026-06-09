@@ -514,18 +514,7 @@ function PartyDetail() {
 					style={{ padding: 0, overflow: "hidden", position: "relative" }}
 				>
 					{/* 標題與設施 (背景透明度調整) */}
-					<div
-						style={{
-							minHeight: "220px",
-							background:
-								"linear-gradient(135deg, rgba(121, 149, 165, 0.85), rgba(75, 98, 114, 0.85))",
-							padding: "60px 40px 30px 40px",
-							color: "white",
-							display: "flex",
-							flexDirection: "column",
-							justifyContent: "flex-end",
-						}}
-					>
+					<div className="detail-card-header-bg">
 						<div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
 							<span
 								className="party-type"
@@ -626,7 +615,7 @@ function PartyDetail() {
 						</div>
 					</div>
 
-					<div style={{ padding: "40px" }}>
+					<div className="detail-card-body">
 						{isUserHost && !isHistory && party.venueStatus === "pending" && (
 							<div
 								style={{
@@ -715,28 +704,8 @@ function PartyDetail() {
 							</div>
 						)}
 
-						<div
-							className="detail-info-row"
-							style={{
-								display: "grid",
-								gridTemplateColumns: "1fr 1fr",
-								gap: "20px",
-								paddingBottom: "32px",
-							}}
-						>
-							<div
-								className="detail-info-item"
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: "8px",
-									fontSize: "16px",
-									backgroundColor: "#f8fafc",
-									padding: "16px 20px",
-									borderRadius: "12px",
-									border: "1px solid #e2e8f0",
-								}}
-							>
+						<div className="detail-info-grid">
+							<div className="detail-info-item">
 								<Clock size={20} color="#7995a5" />
 								<span style={{ color: "#64748b", fontWeight: "600" }}>
 									時間：
@@ -744,19 +713,7 @@ function PartyDetail() {
 								<span style={{ fontWeight: "800" }}>{party.time}</span>
 							</div>
 
-							<div
-								className="detail-info-item"
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: "8px",
-									fontSize: "16px",
-									backgroundColor: "#f8fafc",
-									padding: "16px 20px",
-									borderRadius: "12px",
-									border: "1px solid #e2e8f0",
-								}}
-							>
+							<div className="detail-info-item">
 								<Timer size={20} color="#7995a5" />
 								<span style={{ color: "#64748b", fontWeight: "600" }}>
 									時長：
@@ -766,20 +723,7 @@ function PartyDetail() {
 								</span>
 							</div>
 
-							<div
-								className="detail-info-item"
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: "8px",
-									fontSize: "16px",
-									backgroundColor: "#f8fafc",
-									padding: "16px 20px",
-									borderRadius: "12px",
-									border: "1px solid #e2e8f0",
-									position: "relative",
-								}}
-							>
+							<div className="detail-info-item" style={{ position: "relative" }}>
 								<MapPin size={20} color="#7995a5" />
 								<div
 									style={{ display: "flex", flexDirection: "column", flex: 1 }}
@@ -799,19 +743,7 @@ function PartyDetail() {
 								</div>
 							</div>
 
-							<div
-								className="detail-info-item"
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: "8px",
-									fontSize: "16px",
-									backgroundColor: "#f8fafc",
-									padding: "16px 20px",
-									borderRadius: "12px",
-									border: "1px solid #e2e8f0",
-								}}
-							>
+							<div className="detail-info-item">
 								<DollarSign size={20} color="#7995a5" />
 								<span style={{ color: "#64748b", fontWeight: "600" }}>
 									{" "}

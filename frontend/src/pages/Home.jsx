@@ -572,7 +572,7 @@ function Home() {
             
             {/* 通知中心下拉選單 */}
             {showNotifications && (
-              <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '12px', width: '300px', backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', zIndex: 1000, overflow: 'hidden', border: '1px solid #e2e8f0', textAlign: 'left' }}>
+              <div className="notification-dropdown">
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', fontWeight: '700', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   通知中心
                   <span 
