@@ -46,12 +46,16 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     return 6371.0 * c
 
 def get_sport_by_name_or_alias(sport_name, create=True):
+    normalized_name = sport_name.strip()
+    if normalized_name in ['羽毛球', 'badminton', 'Badminton']:
+        normalized_name = '羽球'
+
     for sport in Sport.objects.all():
-        if sport.name.strip().lower() == sport_name.strip().lower():
+        if sport.name.strip().lower() == normalized_name.lower():
             return sport
-            
+
     if create:
-        sport, _ = Sport.objects.get_or_create(name=sport_name)
+        sport, _ = Sport.objects.get_or_create(name=normalized_name)
         return sport
     return None
 
@@ -283,14 +287,19 @@ class UserViewSet(viewsets.ModelViewSet):
 
         if levels and isinstance(levels, dict):
             for sport_name, short_lv in levels.items():
+                norm_name = sport_name.strip()
+                if norm_name in ['羽毛球', 'badminton', 'Badminton'] and '羽球' in levels:
+                    continue # 避免羽毛球的舊資料覆蓋剛更新的羽球資料
+                    
                 first_char = short_lv.strip().upper()[0] if short_lv else 'C'
                 if first_char not in ['S', 'A', 'B', 'C']:
                     first_char = 'C'
                 sport = get_sport_by_name_or_alias(sport_name)
-                UserSportLevel.objects.update_or_create(
-                    user=user, sport=sport,
-                    defaults={'level': first_char}
-                )
+                if sport:
+                    UserSportLevel.objects.update_or_create(
+                        user=user, sport=sport,
+                        defaults={'level': first_char}
+                    )
 
         serializer = UserProfileSerializer(user)
         return Response(serializer.data)
@@ -1923,12 +1932,13 @@ class AdminAnalyticsView(APIView):
     permission_classes = [IsAdminRole]
 
     def get(self, request):
+        from django.db.models import Q
         today = timezone.now().date()
         
         # Today's active users: users who are participants in a match today or created a match today
         active_users = User.objects.filter(
-            models.Q(created_matches__booking_date=today) | 
-            models.Q(matchparticipant__match__booking_date=today)
+            Q(created_matches__booking_date=today) | 
+            Q(matchparticipant__match__booking_date=today)
         ).distinct().count()
         
         # If no one is active today, show total users as a fallback or just show 0

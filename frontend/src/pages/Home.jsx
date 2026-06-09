@@ -192,22 +192,18 @@ function Home() {
 
   useEffect(() => {
     console.log("Home component mounted. Initial regions keys:", Object.keys(regions));
-    fetch('/api/venues/')
-      .then(res => {
-        console.log("Fetch venues response status:", res.status);
-        if (!res.ok) throw new Error('Failed to fetch venues');
-        return res.json();
-      })
+    venuesApi.getVenues()
       .then(data => {
         console.log("Fetch venues data:", data);
-        if (data && Array.isArray(data) && data.length > 0) {
+        const list = Array.isArray(data) ? data : (data.results || []);
+        if (list.length > 0) {
           // 複製一份前端靜態資料作為基礎，並將後端資料合併進去
           const mergedRegions = JSON.parse(JSON.stringify(taiwanRegions));
           const mergedFacilitiesMap = { ...venueFacilities };
 
-          data.forEach(v => {
-            const city = v.address_detail?.city || '其他縣市';
-            const district = v.address_detail?.district || '其他區';
+          list.forEach(v => {
+            const city = v.city || v.address_detail?.city || '其他縣市';
+            const district = v.district || v.address_detail?.district || '其他區';
             const name = v.name;
 
             if (!mergedRegions[city]) {
@@ -255,6 +251,7 @@ function Home() {
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [feedback, setFeedback] = useState({ type: '建議', content: '' });
   const [selectedFilterRegion, setSelectedFilterRegion] = useState('all');
+  const [selectedFilterDistrict, setSelectedFilterDistrict] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('全部');
   const [newParty, setNewParty] = useState({ 
     title: '', 
@@ -303,6 +300,11 @@ function Home() {
         return;
       }
     }
+
+    const userLevelInSportStr = userProfile?.levels?.[newParty.type] || 'C';
+    const userLevelInSport = userLevelInSportStr.charAt(0).toUpperCase();
+    const rankValue = { 'S': 4, 'A': 3, 'B': 2, 'C': 1 };
+    const requiredRank = { '高手': 3, '業餘': 2, '休閒': 1 };
 
     if (rankValue[userLevelInSport] < requiredRank[newParty.level]) {
       alert(`你的${newParty.type}程度為 ${userLevelInSport}，無法發起${newParty.level}喔！`);
@@ -364,7 +366,7 @@ function Home() {
         type: rawType,
         level: rawLevel,
         genderLimit: newGame.genderLimit || newGame.gender_limit || newParty.genderLimit,
-        location: newGame.location || newGame.venue_name || newParty.venue,
+        location: newGame.location || newGame.venue_name || `${newParty.city}${newParty.district}${newParty.venue}`,
         description: newGame.game_note || newGame.description || newParty.description,
         time: newGame.time || (newGame.booking_date ? `${newGame.booking_date} ${newGame.time_slot || ''}` : newParty.time.replace('T', ' ')),
         currentPlayers: newGame.currentPlayers ?? newGame.current_players ?? 1,
@@ -452,7 +454,7 @@ function Home() {
 
   const handleCityChange = (e) => {
     const selectedCity = e.target.value;
-    const districts = regions[selectedCity] || {};
+    const districts = taiwanRegions[selectedCity] || {};
     const firstDistrict = Object.keys(districts)[0] || '';
     const venuesList = districts[firstDistrict] || [];
     const firstVenue = venuesList[0] || '其他';
@@ -466,7 +468,7 @@ function Home() {
 
   const handleDistrictChange = (e) => {
     const selectedDistrict = e.target.value;
-    const venuesList = regions[newParty.city]?.[selectedDistrict] || [];
+    const venuesList = taiwanRegions[newParty.city]?.[selectedDistrict] || [];
     const firstVenue = venuesList[0] || '其他';
     setNewParty({
       ...newParty,
@@ -570,7 +572,7 @@ function Home() {
             
             {/* 通知中心下拉選單 */}
             {showNotifications && (
-              <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '12px', width: '300px', backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', zIndex: 1000, overflow: 'hidden', border: '1px solid #e2e8f0', textAlign: 'left' }}>
+              <div className="notification-dropdown">
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', fontWeight: '700', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   通知中心
                   <span 
@@ -755,12 +757,36 @@ function Home() {
           </div>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
             {isPageLoading && <span style={{ color: '#94a3b8' }}>載入中...</span>}
-            <select className="region-select" value={selectedFilterRegion} onChange={e => setSelectedFilterRegion(e.target.value)}>
-              <option value="all">所有地區</option>
-              {Object.keys(regions).map(city => (
-                <option key={city} value={city}>{city}</option>
-              ))}
-            </select>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <select 
+                className="region-select" 
+                value={selectedFilterRegion} 
+                onChange={e => {
+                  setSelectedFilterRegion(e.target.value);
+                  setSelectedFilterDistrict('all');
+                }}
+              >
+                <option value="all">所有縣市</option>
+                {Object.keys(regions).filter(city => city !== '未選擇' && city.trim() !== '').map(city => (
+                  <option key={city} value={city}>{city}</option>
+                ))}
+              </select>
+
+              {selectedFilterRegion !== 'all' && regions[selectedFilterRegion] && (
+                <select 
+                  className="region-select" 
+                  value={selectedFilterDistrict} 
+                  onChange={e => setSelectedFilterDistrict(e.target.value)}
+                >
+                  <option value="all">所有區域</option>
+                  {Object.keys(regions[selectedFilterRegion])
+                    .filter(dist => dist !== '未選擇' && dist !== '其他' && dist.trim() !== '')
+                    .map(dist => (
+                      <option key={dist} value={dist}>{dist}</option>
+                    ))}
+                </select>
+              )}
+            </div>
             <div className="filter-chips">
               {['全部', '籃球', '麻將', '桌球', '羽球', '排球'].map(cat => (
                 <span 
@@ -778,7 +804,8 @@ function Home() {
         {/* 卡片列表 */}
         <div className="party-grid">
           {parties
-            .filter(party => selectedFilterRegion === 'all' || party.location.includes(selectedFilterRegion))
+            .filter(party => selectedFilterRegion === 'all' || (party.location && party.location.includes(selectedFilterRegion)))
+            .filter(party => selectedFilterDistrict === 'all' || (party.location && party.location.includes(selectedFilterDistrict)))
             .filter(party => selectedCategory === '全部' || party.type === selectedCategory)
             .sort((a, b) => {
               const currentUserId = localStorage.getItem('user_id');
@@ -946,6 +973,7 @@ function Home() {
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <h3>發起新揪團</h3>
+              <button type="button" className="modal-close" onClick={() => setIsModalOpen(false)}>×</button>
             </div>
             <form onSubmit={handleCreateParty}>
               <div className="form-group">
@@ -1032,7 +1060,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (縣市)</label>
                     <select className="form-input" value={newParty.city} onChange={handleCityChange}>
-                      {Object.keys(regions).map(city => (
+                      {Object.keys(taiwanRegions).map(city => (
                         <option key={city} value={city}>{city}</option>
                       ))}
                     </select>
@@ -1040,7 +1068,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (區域)</label>
                     <select className="form-input" value={newParty.district} onChange={handleDistrictChange}>
-                      {Object.keys(regions[newParty.city] || {}).map(dist => (
+                      {Object.keys(taiwanRegions[newParty.city] || {}).map(dist => (
                         <option key={dist} value={dist}>{dist}</option>
                       ))}
                     </select>
@@ -1048,7 +1076,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (場館/球場)</label>
                     <select className="form-input" value={newParty.venue} onChange={e => setNewParty({...newParty, venue: e.target.value})}>
-                      {(regions[newParty.city]?.[newParty.district] || []).map(v => (
+                      {(taiwanRegions[newParty.city]?.[newParty.district] || []).map(v => (
                         <option key={v} value={v}>{v}</option>
                       ))}
                     </select>
@@ -1096,7 +1124,14 @@ function Home() {
                 />
               </div>
 
-              <button type="submit" className="login-button" style={{ marginTop: '16px' }}>確認發起</button>
+              <div style={{ display: 'flex', gap: '16px', marginTop: '24px' }}>
+                <button type="button" className="btn-outline" style={{ flex: 1, margin: 0, padding: '12px', borderRadius: '12px' }} onClick={() => setIsModalOpen(false)}>
+                  取消
+                </button>
+                <button type="submit" className="login-button" style={{ flex: 1, margin: 0, padding: '12px', borderRadius: '12px' }}>
+                  確認發起
+                </button>
+              </div>
             </form>
           </div>
         </div>
