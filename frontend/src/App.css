@@ -884,6 +884,21 @@
   border: 1px solid #e2e8f0;
 }
 
+.notification-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 12px;
+  width: 320px;
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  text-align: left;
+}
+
 /* --- 手機版響應式設計 (Mobile Responsive Design) --- */
 @media (max-width: 768px) {
   /* 導覽列優化：縮小內邊距與間距，避免按鈕溢出 */
@@ -1058,6 +1073,17 @@
     flex: 1 1 100% !important; /* 手機端按鈕改為上下堆疊而非左右並排 */
     padding: 12px !important;
     font-size: 14px !important;
+  }
+
+  /* --- 通知中心下拉選單手機端響應式優化 --- */
+  .notification-dropdown {
+    position: fixed;
+    top: 60px; /* 剛好在手機導覽列下方 */
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: none;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   }
 }
 
