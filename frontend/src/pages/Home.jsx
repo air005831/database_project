@@ -973,6 +973,7 @@ function Home() {
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <h3>發起新揪團</h3>
+              <button type="button" className="modal-close" onClick={() => setIsModalOpen(false)}>×</button>
             </div>
             <form onSubmit={handleCreateParty}>
               <div className="form-group">
@@ -1123,7 +1124,14 @@ function Home() {
                 />
               </div>
 
-              <button type="submit" className="login-button" style={{ marginTop: '16px' }}>確認發起</button>
+              <div style={{ display: 'flex', gap: '16px', marginTop: '24px' }}>
+                <button type="button" className="btn-outline" style={{ flex: 1, margin: 0, padding: '12px', borderRadius: '12px' }} onClick={() => setIsModalOpen(false)}>
+                  取消
+                </button>
+                <button type="submit" className="login-button" style={{ flex: 1, margin: 0, padding: '12px', borderRadius: '12px' }}>
+                  確認發起
+                </button>
+              </div>
             </form>
           </div>
         </div>
