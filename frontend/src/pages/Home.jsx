@@ -192,22 +192,18 @@ function Home() {
 
   useEffect(() => {
     console.log("Home component mounted. Initial regions keys:", Object.keys(regions));
-    fetch('/api/venues/')
-      .then(res => {
-        console.log("Fetch venues response status:", res.status);
-        if (!res.ok) throw new Error('Failed to fetch venues');
-        return res.json();
-      })
+    venuesApi.getVenues()
       .then(data => {
         console.log("Fetch venues data:", data);
-        if (data && Array.isArray(data) && data.length > 0) {
+        const list = Array.isArray(data) ? data : (data.results || []);
+        if (list.length > 0) {
           // 複製一份前端靜態資料作為基礎，並將後端資料合併進去
           const mergedRegions = JSON.parse(JSON.stringify(taiwanRegions));
           const mergedFacilitiesMap = { ...venueFacilities };
 
-          data.forEach(v => {
-            const city = v.address_detail?.city || '其他縣市';
-            const district = v.address_detail?.district || '其他區';
+          list.forEach(v => {
+            const city = v.city || v.address_detail?.city || '其他縣市';
+            const district = v.district || v.address_detail?.district || '其他區';
             const name = v.name;
 
             if (!mergedRegions[city]) {
@@ -255,6 +251,7 @@ function Home() {
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [feedback, setFeedback] = useState({ type: '建議', content: '' });
   const [selectedFilterRegion, setSelectedFilterRegion] = useState('all');
+  const [selectedFilterDistrict, setSelectedFilterDistrict] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('全部');
   const [newParty, setNewParty] = useState({ 
     title: '', 
@@ -369,7 +366,7 @@ function Home() {
         type: rawType,
         level: rawLevel,
         genderLimit: newGame.genderLimit || newGame.gender_limit || newParty.genderLimit,
-        location: newGame.location || newGame.venue_name || newParty.venue,
+        location: newGame.location || newGame.venue_name || `${newParty.city}${newParty.district}${newParty.venue}`,
         description: newGame.game_note || newGame.description || newParty.description,
         time: newGame.time || (newGame.booking_date ? `${newGame.booking_date} ${newGame.time_slot || ''}` : newParty.time.replace('T', ' ')),
         currentPlayers: newGame.currentPlayers ?? newGame.current_players ?? 1,
@@ -760,12 +757,36 @@ function Home() {
           </div>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
             {isPageLoading && <span style={{ color: '#94a3b8' }}>載入中...</span>}
-            <select className="region-select" value={selectedFilterRegion} onChange={e => setSelectedFilterRegion(e.target.value)}>
-              <option value="all">所有地區</option>
-              {Object.keys(regions).map(city => (
-                <option key={city} value={city}>{city}</option>
-              ))}
-            </select>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <select 
+                className="region-select" 
+                value={selectedFilterRegion} 
+                onChange={e => {
+                  setSelectedFilterRegion(e.target.value);
+                  setSelectedFilterDistrict('all');
+                }}
+              >
+                <option value="all">所有縣市</option>
+                {Object.keys(regions).filter(city => city !== '未選擇' && city.trim() !== '').map(city => (
+                  <option key={city} value={city}>{city}</option>
+                ))}
+              </select>
+
+              {selectedFilterRegion !== 'all' && regions[selectedFilterRegion] && (
+                <select 
+                  className="region-select" 
+                  value={selectedFilterDistrict} 
+                  onChange={e => setSelectedFilterDistrict(e.target.value)}
+                >
+                  <option value="all">所有區域</option>
+                  {Object.keys(regions[selectedFilterRegion])
+                    .filter(dist => dist !== '未選擇' && dist !== '其他' && dist.trim() !== '')
+                    .map(dist => (
+                      <option key={dist} value={dist}>{dist}</option>
+                    ))}
+                </select>
+              )}
+            </div>
             <div className="filter-chips">
               {['全部', '籃球', '麻將', '桌球', '羽球', '排球'].map(cat => (
                 <span 
@@ -783,7 +804,8 @@ function Home() {
         {/* 卡片列表 */}
         <div className="party-grid">
           {parties
-            .filter(party => selectedFilterRegion === 'all' || party.location.includes(selectedFilterRegion))
+            .filter(party => selectedFilterRegion === 'all' || (party.location && party.location.includes(selectedFilterRegion)))
+            .filter(party => selectedFilterDistrict === 'all' || (party.location && party.location.includes(selectedFilterDistrict)))
             .filter(party => selectedCategory === '全部' || party.type === selectedCategory)
             .sort((a, b) => {
               const currentUserId = localStorage.getItem('user_id');
