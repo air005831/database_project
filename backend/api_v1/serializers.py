@@ -29,11 +29,22 @@ class UserProfileSerializer(serializers.ModelSerializer):
         for usl in obj.sport_levels.all():
             sport_name = usl.sport.chinese_name
             level_char = usl.level[0] if usl.level else 'C'
-            res[sport_name] = level_char
+            
+            # 統一映射到標準名稱
             if sport_name == "羽毛球":
-                res["羽球"] = level_char
-            elif sport_name == "羽球":
-                res["羽毛球"] = level_char
+                sport_name = "羽球"
+                
+            # 如果已經有較高等級的紀錄，避免被預設的 C 覆蓋
+            if sport_name in res:
+                if res[sport_name] == 'C' and level_char != 'C':
+                    res[sport_name] = level_char
+            else:
+                res[sport_name] = level_char
+
+        # 為了相容其他可能使用「羽毛球」的情境，把兩者同步
+        if "羽球" in res:
+            res["羽毛球"] = res["羽球"]
+
         return res
 
 class SportSerializer(serializers.ModelSerializer):
@@ -234,15 +245,25 @@ class GameMatchListSerializer(serializers.ModelSerializer):
     creator_id = serializers.ReadOnlyField(source='creator.id')
     participant_ids = serializers.SerializerMethodField()
     waitlist_ids = serializers.SerializerMethodField()
+    location = serializers.SerializerMethodField()
 
     class Meta:
         model = GameMatch
         fields = [
-            'id', 'game_name', 'sport_id', 'sport_name', 'venue_name', 'least_players', 'most_players',
+            'id', 'game_name', 'sport_id', 'sport_name', 'venue_name', 'location', 'least_players', 'most_players',
             'current_players', 'target_level', 'booking_date', 'time_slot', 
             'split_price', 'booking_status', 'match_status', 'creator_id',
             'gender_limit', 'participant_ids', 'waitlist_ids'
         ]
+
+    def get_location(self, obj):
+        if obj.court and obj.court.venue:
+            venue = obj.court.venue
+            address_str = ""
+            if hasattr(venue, 'address') and venue.address:
+                address_str = f"{venue.address.city or ''}{venue.address.district or ''}"
+            return f"{address_str}{venue.name}"
+        return ""
 
     def get_current_players(self, obj):
         cnt = obj.participants.count()
@@ -403,6 +424,7 @@ class GameMatchSerializer(serializers.ModelSerializer):
     duration = serializers.CharField(required=False, default='2 小時')
     description = serializers.CharField(source='game_note', required=False, allow_null=True, allow_blank=True)
     announcements = serializers.SerializerMethodField()
+    location = serializers.SerializerMethodField()
 
     def validate_target_level(self, value):
         valid_values = [choice[0] for choice in GameMatch.LEVEL_CHOICES]
@@ -413,7 +435,7 @@ class GameMatchSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameMatch
         fields = [
-            'id', 'game_name', 'sport_id', 'sport_name', 'court_id', 'venue_id', 'venue_name', 'least_players', 'most_players',
+            'id', 'game_name', 'sport_id', 'sport_name', 'court_id', 'venue_id', 'venue_name', 'location', 'least_players', 'most_players',
             'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note', 'description',
             'total_price', 'split_price', 'deposit_required', 'cancel_deadline',
             'weather', 'air_index', 'booking_status',
@@ -421,6 +443,15 @@ class GameMatchSerializer(serializers.ModelSerializer):
             'gender_limit', 'announcements'
         ]
         read_only_fields = ('match_status', 'weather', 'air_index', 'facilities', 'time_slot')
+
+    def get_location(self, obj):
+        if obj.court and obj.court.venue:
+            venue = obj.court.venue
+            address_str = ""
+            if hasattr(venue, 'address') and venue.address:
+                address_str = f"{venue.address.city or ''}{venue.address.district or ''}"
+            return f"{address_str}{venue.name}"
+        return ""
 
     def get_facilities(self, obj):
         if obj.court and obj.court.venue:

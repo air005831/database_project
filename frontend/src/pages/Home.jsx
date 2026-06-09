@@ -304,6 +304,11 @@ function Home() {
       }
     }
 
+    const userLevelInSportStr = userProfile?.levels?.[newParty.type] || 'C';
+    const userLevelInSport = userLevelInSportStr.charAt(0).toUpperCase();
+    const rankValue = { 'S': 4, 'A': 3, 'B': 2, 'C': 1 };
+    const requiredRank = { '高手': 3, '業餘': 2, '休閒': 1 };
+
     if (rankValue[userLevelInSport] < requiredRank[newParty.level]) {
       alert(`你的${newParty.type}程度為 ${userLevelInSport}，無法發起${newParty.level}喔！`);
       return;
