@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CloudSun, MapPin, Clock, Bell, HelpCircle } from 'lucide-react';
 import '../App.css';
@@ -83,8 +83,71 @@ function Home() {
     '象山公園球場': ['飲水機', '廁所'],
     '新生公園': ['廁所'],
     '彩虹河濱公園': ['廁所'],
-    '其他': ['基本設施']
   };
+
+  const [regions, setRegions] = useState(taiwanRegions);
+  const [facilitiesMap, setFacilitiesMap] = useState(venueFacilities);
+
+  useEffect(() => {
+    console.log("Home component mounted. Initial regions keys:", Object.keys(regions));
+    fetch('/api/venues/')
+      .then(res => {
+        console.log("Fetch venues response status:", res.status);
+        if (!res.ok) throw new Error('Failed to fetch venues');
+        return res.json();
+      })
+      .then(data => {
+        console.log("Fetch venues data:", data);
+        if (data && Array.isArray(data) && data.length > 0) {
+          // 複製一份前端靜態資料作為基礎，並將後端資料合併進去
+          const mergedRegions = JSON.parse(JSON.stringify(taiwanRegions));
+          const mergedFacilitiesMap = { ...venueFacilities };
+
+          data.forEach(v => {
+            const city = v.address_detail?.city || '其他縣市';
+            const district = v.address_detail?.district || '其他區';
+            const name = v.name;
+
+            if (!mergedRegions[city]) {
+              mergedRegions[city] = {};
+            }
+            if (!mergedRegions[city][district]) {
+              mergedRegions[city][district] = [];
+            }
+            if (!mergedRegions[city][district].includes(name)) {
+              // 把後端資料塞到該區最前面
+              mergedRegions[city][district].unshift(name);
+            }
+
+            mergedFacilitiesMap[name] = v.facilities || ['基本設施'];
+          });
+
+          // 確保每個區域選單中都有「其他」選項
+          Object.keys(mergedRegions).forEach(city => {
+            Object.keys(mergedRegions[city]).forEach(district => {
+              if (!mergedRegions[city][district].includes('其他')) {
+                mergedRegions[city][district].push('其他');
+              }
+            });
+          });
+
+          setRegions(mergedRegions);
+          setFacilitiesMap(mergedFacilitiesMap);
+
+          // 更新初始選單選項為合併後的首個位置
+          const firstCity = Object.keys(mergedRegions)[0] || '桃園市';
+          const firstDistrict = Object.keys(mergedRegions[firstCity] || {})[0] || '桃園區';
+          const firstVenue = (mergedRegions[firstCity]?.[firstDistrict] || [])[0] || '其他';
+          setNewParty(prev => ({
+            ...prev,
+            city: firstCity,
+            district: firstDistrict,
+            venue: firstVenue
+          }));
+        }
+      })
+      .catch(err => console.error('Failed to load backend venues, using local fallbacks:', err));
+  }, []);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
@@ -155,7 +218,7 @@ function Home() {
       maxWaitlist: 2,
       participants: ['我 (主揪)'],
       waitlist: [],
-      facilities: venueFacilities[newParty.venue] || ['基本設施'],
+      facilities: facilitiesMap[newParty.venue] || ['基本設施'],
       description: newParty.description || '這是我剛發起的揪團，歡迎大家來玩！'
     };
     setParties([party, ...parties]);
@@ -181,8 +244,10 @@ function Home() {
 
   const handleCityChange = (e) => {
     const selectedCity = e.target.value;
-    const firstDistrict = Object.keys(taiwanRegions[selectedCity])[0];
-    const firstVenue = taiwanRegions[selectedCity][firstDistrict][0];
+    const districts = regions[selectedCity] || {};
+    const firstDistrict = Object.keys(districts)[0] || '';
+    const venuesList = districts[firstDistrict] || [];
+    const firstVenue = venuesList[0] || '其他';
     setNewParty({
       ...newParty,
       city: selectedCity,
@@ -193,7 +258,8 @@ function Home() {
 
   const handleDistrictChange = (e) => {
     const selectedDistrict = e.target.value;
-    const firstVenue = taiwanRegions[newParty.city][selectedDistrict][0];
+    const venuesList = regions[newParty.city]?.[selectedDistrict] || [];
+    const firstVenue = venuesList[0] || '其他';
     setNewParty({
       ...newParty,
       district: selectedDistrict,
@@ -323,7 +389,7 @@ function Home() {
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
             <select className="region-select" value={selectedFilterRegion} onChange={e => setSelectedFilterRegion(e.target.value)}>
               <option value="all">所有地區</option>
-              {Object.keys(taiwanRegions).map(city => (
+              {Object.keys(regions).map(city => (
                 <option key={city} value={city}>{city}</option>
               ))}
             </select>
@@ -473,7 +539,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (縣市)</label>
                     <select className="form-input" value={newParty.city} onChange={handleCityChange}>
-                      {Object.keys(taiwanRegions).map(city => (
+                      {Object.keys(regions).map(city => (
                         <option key={city} value={city}>{city}</option>
                       ))}
                     </select>
@@ -481,7 +547,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (區域)</label>
                     <select className="form-input" value={newParty.district} onChange={handleDistrictChange}>
-                      {Object.keys(taiwanRegions[newParty.city]).map(dist => (
+                      {Object.keys(regions[newParty.city] || {}).map(dist => (
                         <option key={dist} value={dist}>{dist}</option>
                       ))}
                     </select>
@@ -489,7 +555,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (場館/球場)</label>
                     <select className="form-input" value={newParty.venue} onChange={e => setNewParty({...newParty, venue: e.target.value})}>
-                      {taiwanRegions[newParty.city][newParty.district].map(v => (
+                      {(regions[newParty.city]?.[newParty.district] || []).map(v => (
                         <option key={v} value={v}>{v}</option>
                       ))}
                     </select>

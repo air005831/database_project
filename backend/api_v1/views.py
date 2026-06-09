@@ -138,6 +138,37 @@ class UserViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter]
     search_fields = ['email', 'phone', 'name', 'line_id', 'instagram']
 
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'reputation']:
+            return [IsAdminRole()]
+        return [permissions.IsAuthenticated()]
+
+    @action(detail=True, methods=['patch'], url_path='reputation')
+    def reputation(self, request, pk=None):
+        user = self.get_object()
+        credit_point = request.data.get('credit_point')
+        if credit_point is None:
+            return Response({"detail": "credit_point is required."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            credit_point = int(credit_point)
+        except (ValueError, TypeError):
+            return Response({"detail": "credit_point must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
+        user.credit_point = credit_point
+        user.save(update_fields=['credit_point'])
+        return Response({
+            "id": user.id,
+            "name": user.name,
+            "credit_point": user.credit_point
+        })
+
+    @action(detail=False, methods=['post'], url_path='reset-reputation', permission_classes=[IsAdminRole])
+    def reset_reputation(self, request):
+        User.objects.all().update(credit_point=90)
+        return Response({
+            "status": "success",
+            "message": "已成功重置所有玩家的信譽積分為 90 分。"
+        }, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['get', 'put', 'patch', 'delete'], url_path='profile')
     def profile(self, request):
         user = request.user

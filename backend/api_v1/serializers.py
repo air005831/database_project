@@ -76,6 +76,15 @@ class VenueSerializer(serializers.ModelSerializer):
         representation = super().to_representation(instance)
         # 統計關聯的球場數量
         representation['court_count'] = instance.courts.count()
+        # 動態加入讀取的地址欄位，讓前端可以直接讀取 v.city 和 v.district
+        if instance.address:
+            representation['city'] = instance.address.city
+            representation['district'] = instance.address.district
+            representation['street_line'] = instance.address.street_line
+        else:
+            representation['city'] = ""
+            representation['district'] = ""
+            representation['street_line'] = ""
         return representation
     # 3. 處理 POST 建立邏輯
     def create(self, validated_data):
