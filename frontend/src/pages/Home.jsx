@@ -454,7 +454,7 @@ function Home() {
 
   const handleCityChange = (e) => {
     const selectedCity = e.target.value;
-    const districts = regions[selectedCity] || {};
+    const districts = taiwanRegions[selectedCity] || {};
     const firstDistrict = Object.keys(districts)[0] || '';
     const venuesList = districts[firstDistrict] || [];
     const firstVenue = venuesList[0] || '其他';
@@ -468,7 +468,7 @@ function Home() {
 
   const handleDistrictChange = (e) => {
     const selectedDistrict = e.target.value;
-    const venuesList = regions[newParty.city]?.[selectedDistrict] || [];
+    const venuesList = taiwanRegions[newParty.city]?.[selectedDistrict] || [];
     const firstVenue = venuesList[0] || '其他';
     setNewParty({
       ...newParty,
@@ -1060,7 +1060,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (縣市)</label>
                     <select className="form-input" value={newParty.city} onChange={handleCityChange}>
-                      {Object.keys(regions).map(city => (
+                      {Object.keys(taiwanRegions).map(city => (
                         <option key={city} value={city}>{city}</option>
                       ))}
                     </select>
@@ -1068,7 +1068,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (區域)</label>
                     <select className="form-input" value={newParty.district} onChange={handleDistrictChange}>
-                      {Object.keys(regions[newParty.city] || {}).map(dist => (
+                      {Object.keys(taiwanRegions[newParty.city] || {}).map(dist => (
                         <option key={dist} value={dist}>{dist}</option>
                       ))}
                     </select>
@@ -1076,7 +1076,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (場館/球場)</label>
                     <select className="form-input" value={newParty.venue} onChange={e => setNewParty({...newParty, venue: e.target.value})}>
-                      {(regions[newParty.city]?.[newParty.district] || []).map(v => (
+                      {(taiwanRegions[newParty.city]?.[newParty.district] || []).map(v => (
                         <option key={v} value={v}>{v}</option>
                       ))}
                     </select>
