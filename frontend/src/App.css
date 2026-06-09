@@ -850,5 +850,147 @@
   box-shadow: 0 10px 25px rgba(229, 205, 205, 0.6);
 }
 
+/* --- 手機版響應式設計 (Mobile Responsive Design) --- */
+@media (max-width: 768px) {
+  /* 導覽列優化：縮小內邊距與間距，避免按鈕溢出 */
+  .navbar {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  
+  .navbar-logo {
+    font-size: 20px;
+  }
+  
+  .navbar-actions {
+    gap: 8px;
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .navbar-actions button {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  
+  /* 主要內容區域縮小間距，以容納更多內容 */
+  .main-content {
+    padding: 16px;
+  }
+  
+  /* 揪團大廳標題與天氣小工具：改為上下排列，小工具拉寬 */
+  .content-header > div:first-child {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  
+  .content-header h2 {
+    font-size: 24px;
+    margin-bottom: 0;
+  }
+  
+  .weather-widget {
+    width: 100%;
+    justify-content: space-between;
+    box-sizing: border-box;
+  }
+  
+  /* 篩選控制器（地區下拉、運動選單）：改為上下垂直堆疊 */
+  .content-header > div:last-child {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 16px;
+  }
+  
+  /* 地區連動下拉選單：兩欄並列均分寬度，充滿整行 */
+  .content-header > div:last-child > div:first-child {
+    display: flex;
+    width: 100% !important;
+    gap: 8px;
+  }
+  
+  .region-select {
+    flex: 1;
+    width: 50%;
+    padding: 8px 12px;
+    font-size: 14px;
+    text-align: center;
+  }
+  
+  /* 運動篩選標籤 (Chips)：改為橫向滑動，避免折行擁擠 */
+  .filter-chips {
+    display: flex;
+    overflow-x: auto;
+    padding: 4px 0;
+    gap: 8px;
+    /* 隱藏滾動條 */
+    -ms-overflow-style: none;  /* IE/Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  
+  .filter-chips::-webkit-scrollbar {
+    display: none;  /* Chrome/Safari */
+  }
+  
+  .chip {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    font-size: 13px;
+  }
+  
+  /* 球局卡片網格：改為單欄排列，並縮小內邊距與間距 */
+  .party-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .party-card {
+    padding: 16px;
+  }
+  
+  .party-title {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+  
+  .party-info {
+    margin-bottom: 16px;
+  }
+  
+  /* 浮動按鈕：稍微縮小，避免遮擋內容 */
+  .fab-container {
+    bottom: 24px;
+    right: 16px;
+  }
+  
+  .fab-btn {
+    padding: 10px 18px;
+    font-size: 14px;
+  }
+  
+  /* 彈出視窗彈性拉寬，並疊加手機端內邊距 */
+  .modal-content {
+    width: 92%;
+    padding: 20px;
+    margin: 10px;
+    max-height: 85vh;
+  }
+  
+  /* 發起揪團 Modal 內的左右雙欄佈局：在手機端自動轉為上下單欄 */
+  .modal-content form > div[style*="gridTemplateColumns"] {
+    grid-template-columns: 1fr !important;
+    gap: 0 !important;
+  }
+  
+  /* 其他細節微調 */
+  .bottom-action-bar {
+    width: 90%;
+    bottom: 20px;
+  }
+}
+
 
 
