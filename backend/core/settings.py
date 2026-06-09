@@ -26,15 +26,10 @@ SECRET_KEY = 'django-insecure-!#8^d=@b09*&yf+_&8c$z9t(tfwhvossgf@d!k=$6gu#j9++o-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = [
-    "localhost",
-    "127.0.0.1",
-    "coral-joyride-gallantly.ngrok-free.dev",
-    "spore-easily-detective.ngrok-free.dev",
-]
+ALLOWED_HOSTS = ['*']
 CSRF_TRUSTED_ORIGINS = [
-    "https://coral-joyride-gallantly.ngrok-free.dev",
-    "https://spore-easily-detective.ngrok-free.dev",
+    "https://*.ngrok-free.dev",
+    "https://*.trycloudflare.com",
 ]
 
 
