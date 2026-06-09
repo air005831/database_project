@@ -90,7 +90,7 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 import socket
-git
+
 def check_mysql_availability(host='26.232.235.50', port=3306, timeout=1.0):
     """
     Check if MySQL driver is installed and if the port is open.
