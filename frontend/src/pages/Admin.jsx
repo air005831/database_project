@@ -29,6 +29,15 @@ function Admin() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 1024);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 1024);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  const [venueSubTab, setVenueSubTab] = useState('list');
+  const [announcementSubTab, setAnnouncementSubTab] = useState('list');
+  const [userSubTab, setUserSubTab] = useState('list');
 
   // 場地、揪團、公告狀態改為連線載入
   const [venues, setVenues] = useState([]);
@@ -805,39 +814,11 @@ function Admin() {
     ? uniqueFacilities 
     : ["免費車位", "熱水淋浴間", "自動販賣機", "冷氣機", "廁所"];
 
-  return (
-    <div className="admin-container">
-      {/* 手機版頂部列 */}
-      <header className="admin-mobile-header">
-        <button 
-          onClick={() => setIsSidebarOpen(true)}
-          style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-          </svg>
-        </button>
-        <span style={{ fontSize: '18px', fontWeight: '800' }}>
-          {activeTab === 'dashboard' && '數據分析'}
-          {activeTab === 'venues' && '場地管理'}
-          {activeTab === 'announcements' && '系統公告'}
-          {activeTab === 'feedbacks' && '使用者回饋'}
-          {activeTab === 'user_management' && '會員管理'}
-          {activeTab === 'demo_games' && '房間狀態調整'}
-        </span>
-        <div style={{ width: '24px' }}></div>
-      </header>
-
-      {/* 側邊欄遮罩 */}
-      <div 
-        className={`admin-sidebar-overlay ${isSidebarOpen ? 'visible' : ''}`}
-        onClick={() => setIsSidebarOpen(false)}
-      ></div>
-
+  if (!isMobile) {
+    return (
+    <div className="admin-container" style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
       {/* 側邊欄 */}
-      <aside className={`admin-sidebar ${isSidebarOpen ? 'open' : ''}`}>
+      <aside style={{ width: '260px', backgroundColor: '#1e293b', color: 'white', padding: '24px', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '40px', cursor: 'pointer' }} onClick={() => navigate('/home')}>
           <div style={{ width: '32px', height: '32px', backgroundColor: '#7995a5', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: 'bold' }}>不</div>
           <span style={{ fontSize: '20px', fontWeight: '800' }}>管理後台</span>
@@ -846,37 +827,37 @@ function Admin() {
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <button 
             className={`admin-nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }}
+            onClick={() => setActiveTab('dashboard')}
           >
             <LayoutDashboard size={20} /> 數據分析
           </button>
           <button 
             className={`admin-nav-btn ${activeTab === 'venues' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('venues'); setIsSidebarOpen(false); }}
+            onClick={() => setActiveTab('venues')}
           >
             <MapPinned size={20} /> 場地管理
           </button>
           <button 
             className={`admin-nav-btn ${activeTab === 'announcements' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('announcements'); setIsSidebarOpen(false); }}
+            onClick={() => setActiveTab('announcements')}
           >
             <Bell size={20} /> 系統公告
           </button>
           <button 
             className={`admin-nav-btn ${activeTab === 'feedbacks' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('feedbacks'); setIsSidebarOpen(false); }}
+            onClick={() => setActiveTab('feedbacks')}
           >
             <MessageSquareText size={20} /> 使用者回饋
           </button>
           <button 
             className={`admin-nav-btn ${activeTab === 'user_management' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('user_management'); setIsSidebarOpen(false); }}
+            onClick={() => setActiveTab('user_management')}
           >
             <Users size={20} /> 會員管理
           </button>
           <button 
             className={`admin-nav-btn ${activeTab === 'demo_games' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('demo_games'); setIsSidebarOpen(false); }}
+            onClick={() => setActiveTab('demo_games')}
           >
             <Wrench size={20} /> 房間狀態調整
           </button>
@@ -891,14 +872,14 @@ function Admin() {
       </aside>
 
       {/* 主內容區 */}
-      <main className="admin-main">
+      <main style={{ flex: 1, padding: '40px', overflowY: 'auto' }}>
         
         {/* 數據分析 Tab */}
         {activeTab === 'dashboard' && (
           <div>
             <h2 style={{ marginBottom: '32px' }}>揪團數據統計</h2>
             
-            <div className="admin-stats-grid">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px', marginBottom: '40px' }}>
               <div className="stat-card" style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
                 <div style={{ color: '#64748b', fontSize: '14px', fontWeight: '700', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <TrendingUp size={16} color="#7995a5" /> 今日活躍人數
@@ -922,7 +903,7 @@ function Admin() {
               </div>
             </div>
 
-            <div className="admin-charts-grid">
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '24px' }}>
               <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
                 <h3 style={{ marginBottom: '20px' }}>近期活動熱度</h3>
                 <div style={{ height: '200px', display: 'flex', alignItems: 'flex-end', gap: '12px', paddingBottom: '20px' }}>
@@ -967,7 +948,7 @@ function Admin() {
             </div>
 
             {/* 縣市/區域 篩選查詢 */}
-            <div className="admin-filter-bar">
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', backgroundColor: 'white', padding: '16px 24px', borderRadius: '12px', border: '1px solid #e2e8f0', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '14px', fontWeight: '700', color: '#64748b' }}>篩選縣市：</span>
                 <select 
@@ -1030,7 +1011,7 @@ function Admin() {
               </button>
             </div>
 
-            <div className="admin-table-responsive" style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+            <div style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead style={{ backgroundColor: '#f1f5f9' }}>
                   <tr>
@@ -1079,7 +1060,7 @@ function Admin() {
 
             <div id="add-venue-form" style={{ marginTop: '40px', backgroundColor: 'white', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
               <h3 style={{ marginBottom: '24px' }}>{editingVenueId ? "編輯場地資料" : "新增場地資料"}</h3>
-              <form onSubmit={handleAddVenue} className="admin-form-grid">
+              <form onSubmit={handleAddVenue} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 <div className="form-group">
                   <label className="form-label">場地名稱</label>
                   <input required type="text" className="form-input" placeholder="例如：板橋第二運動場" value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} />
@@ -1158,7 +1139,7 @@ function Admin() {
               <h2 style={{ margin: 0 }}>系統公告管理</h2>
             </div>
 
-            <div className="admin-announcement-grid">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '32px' }}>
               {/* 發佈公告表單 */}
               <div style={{ backgroundColor: 'white', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0', height: 'fit-content' }}>
                 <h3 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}><MessageSquarePlus size={20} /> 發佈新公告</h3>
@@ -1393,13 +1374,13 @@ function Admin() {
                     </span>
                   </div>
                   
-                  <p className="feedback-content-text" style={{ margin: 0, fontSize: '15px', color: '#475569', lineHeight: '1.6' }}>
+                  <p style={{ margin: 0, fontSize: '15px', color: '#475569', lineHeight: '1.6', paddingLeft: '52px' }}>
                     {f.content}
                   </p>
 
                   {/* 如果是已處理，顯示回覆內容 */}
                   {f.is_handled && (
-                    <div className="feedback-reply-area" style={{ marginTop: '16px', backgroundColor: '#f8fafc', padding: '16px', borderRadius: '12px', borderLeft: '4px solid #10b981', paddingLeft: '20px' }}>
+                    <div style={{ marginTop: '16px', backgroundColor: '#f8fafc', padding: '16px', borderRadius: '12px', borderLeft: '4px solid #10b981', paddingLeft: '20px', marginLeft: '52px' }}>
                       <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#1e293b', marginBottom: '4px' }}>管理者的回覆：</div>
                       <div style={{ fontSize: '14px', color: '#475569', whiteSpace: 'pre-wrap' }}>{f.admin_reply || '無回覆內容。'}</div>
                     </div>
@@ -1407,7 +1388,7 @@ function Admin() {
 
                   {/* 填寫回覆區塊 (待處理時展開) */}
                   {replyingFeedbackId === f.id && (
-                    <div className="feedback-reply-area" style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '52px' }}>
                       <textarea 
                         placeholder="請輸入給使用者的回覆內容（送出後會自動發送通知給使用者）..."
                         value={replyText}
@@ -1505,7 +1486,7 @@ function Admin() {
               )}
             </form>
 
-            <div className="admin-user-mgmt-grid">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '32px', alignItems: 'start' }}>
               
               {/* 左側：會員清單 */}
               <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
@@ -1600,7 +1581,7 @@ function Admin() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 {umSelectedUser ? (
                   <div style={{ backgroundColor: 'white', padding: '28px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                    <div className="admin-user-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                         {umSelectedUser.avatar_url ? (
                           <SafeImage src={umSelectedUser.avatar_url} alt="avatar" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #e2e8f0' }} />
@@ -1643,7 +1624,7 @@ function Admin() {
                     </div>
 
                     {/* 基本資料列表 */}
-                    <div className="admin-form-grid" style={{ marginBottom: '28px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '28px' }}>
                       <div>
                         <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>電子信箱</div>
                         <div style={{ fontSize: '14px', color: '#334155', fontWeight: '700', marginTop: '2px', wordBreak: 'break-all' }}>{umSelectedUser.email}</div>
@@ -1681,14 +1662,14 @@ function Admin() {
                       <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <TrendingUp size={16} /> 調整信譽積分
                       </h4>
-                      <div className="admin-reputation-flex" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                         <div>
                           <div style={{ fontSize: '12px', color: '#94a3b8' }}>目前信譽分數</div>
                           <div style={{ fontSize: '24px', fontWeight: '800', color: getReputationStatus(umSelectedUser.credit_point ?? 90).color }}>
                             {umSelectedUser.credit_point ?? 90}
                           </div>
                         </div>
-                        <div className="admin-reputation-divider" style={{ borderLeft: '1px solid #cbd5e1', height: '40px', margin: '0 8px' }}></div>
+                        <div style={{ borderLeft: '1px solid #cbd5e1', height: '40px', margin: '0 8px' }}></div>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <input
@@ -1878,7 +1859,7 @@ function Admin() {
                   {['全部', ...sportsList.map(sport => sport.name).filter(Boolean)].map(sport => (
                     <button
                       key={sport}
-                      onClick={() => setNewParty(prev => ({ ...prev, type: sport })) || setDemoSportFilter(sport)}
+                      onClick={() => setDemoSportFilter(sport)}
                       style={{
                         padding: '5px 12px',
                         borderRadius: '20px',
@@ -1905,7 +1886,7 @@ function Admin() {
                   maxHeight: '650px', 
                   overflowY: 'auto', 
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
                   gap: '16px', 
                   paddingRight: '6px',
                   scrollbarWidth: 'thin'
@@ -2161,6 +2142,1064 @@ function Admin() {
       )}
     </div>
   );
+  }
+  // --- Mobile View Helper Functions ---
+  const renderMobileDashboard = () => (
+    <div>
+      <h2 style={{ fontSize: '20px', marginBottom: '16px', fontWeight: '800' }}>揪團數據統計</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+        <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <div style={{ color: '#64748b', fontSize: '13px', fontWeight: '700', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <TrendingUp size={14} color="#7995a5" /> 今日活躍人數
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '800', color: '#1e293b' }}>{analytics.active_users}</div>
+          <div style={{ color: '#10b981', fontSize: '11px', marginTop: '4px', fontWeight: '600' }}>即時更新中</div>
+        </div>
+        <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <div style={{ color: '#64748b', fontSize: '13px', fontWeight: '700', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <BarChart3 size={14} color="#10b981" /> 進行中揪團
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '800', color: '#1e293b' }}>{analytics.active_games}</div>
+          <div style={{ color: '#64748b', fontSize: '11px', marginTop: '4px', fontWeight: '600' }}>即時更新中</div>
+        </div>
+        <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <div style={{ color: '#64748b', fontSize: '13px', fontWeight: '700', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Bell size={14} color="#f59e0b" /> 系統訊息
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '800', color: '#1e293b' }}>{analytics.system_messages}</div>
+          <div style={{ color: '#f59e0b', fontSize: '11px', marginTop: '4px', fontWeight: '600' }}>即時更新中</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ fontSize: '15px', margin: '0 0 12px 0', fontWeight: '800' }}>近期活動熱度</h3>
+          <div style={{ height: '120px', display: 'flex', alignItems: 'flex-end', gap: '8px', paddingBottom: '8px' }}>
+            {(analytics.daily_activity && analytics.daily_activity.length > 0 ? analytics.daily_activity : [0,0,0,0,0,0,0]).map((h, i) => (
+              <div key={i} style={{ flex: 1, backgroundColor: '#f1f5f9', borderRadius: '4px', height: '100%', position: 'relative' }}>
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#7995a5', height: `${h}%`, borderRadius: '4px' }}></div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', fontSize: '10px' }}>
+            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ fontSize: '15px', margin: '0 0 12px 0', fontWeight: '800' }}>熱門運動比例</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {(analytics.popular_sports && analytics.popular_sports.length > 0 ? analytics.popular_sports : [['無資料', '0%']]).map(([name, pct], i) => (
+              <div key={i}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', fontSize: '12px' }}>
+                  <span>{name}</span><span>{pct}</span>
+                </div>
+                <div style={{ height: '6px', backgroundColor: '#f1f5f9', borderRadius: '3px' }}>
+                  <div style={{ height: '100%', backgroundColor: '#7995a5', width: pct, borderRadius: '3px' }}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderMobileVenues = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h2 style={{ fontSize: '20px', margin: 0, fontWeight: '800' }}>場地管理</h2>
+      </div>
+
+      <div className="admin-sub-tabs">
+        <button 
+          className={`admin-sub-tab-btn ${venueSubTab === 'list' ? 'active' : ''}`}
+          onClick={() => setVenueSubTab('list')}
+        >
+          場地列表
+        </button>
+        <button 
+          className={`admin-sub-tab-btn ${venueSubTab === 'create' ? 'active' : ''}`}
+          onClick={() => {
+            setVenueSubTab('create');
+            if (!editingVenueId) {
+              setNewVenue({ name: '', city: '桃園市', district: '', street_line: '', sport_id: '', court_count: 1, facilities: [] });
+            }
+          }}
+        >
+          {editingVenueId ? "編輯場地" : "新增場地"}
+        </button>
+      </div>
+
+      {venueSubTab === 'list' ? (
+        <div>
+          {/* Filters */}
+          <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>縣市</span>
+              <select className="form-input" style={{ margin: 0 }} value={filterCity} onChange={(e) => { setFilterCity(e.target.value); setFilterDistrict(''); }}>
+                <option value="">全部縣市</option>
+                {cityOptions.map(city => <option key={city} value={city}>{city}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>區域</span>
+              <select className="form-input" style={{ margin: 0 }} value={filterDistrict} onChange={(e) => setFilterDistrict(e.target.value)} disabled={!filterCity}>
+                <option value="">{filterCity ? "全部區域" : "請先選擇縣市"}</option>
+                {districtOptions.map(dist => <option key={dist} value={dist}>{dist}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>運動</span>
+              <select className="form-input" style={{ margin: 0 }} value={filterSport} onChange={(e) => setFilterSport(e.target.value)}>
+                <option value="">全部運動</option>
+                {sportsList.map(sport => <option key={sport.id} value={sport.id}>{sport.name}</option>)}
+              </select>
+            </div>
+            <button className="btn-outline" style={{ marginTop: '8px', padding: '8px 16px', width: '100%', margin: 0 }} onClick={() => { setFilterCity(''); setFilterDistrict(''); setFilterSport(''); }}>
+              重置篩選
+            </button>
+          </div>
+
+          {/* Cards List */}
+          <div>
+            {venues.map(v => (
+              <div key={v.id} className="admin-venue-card">
+                <div className="admin-venue-card-header">
+                  <h4 className="admin-venue-card-title">{v.name}</h4>
+                  <span style={{ fontSize: '12px', fontWeight: '700', color: '#0284c7' }}>{v.court_count} 個球場</span>
+                </div>
+                <p className="admin-venue-card-address">📍 {v.address}</p>
+                <div className="admin-venue-card-details">
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                    {v.facilities.map((f, i) => (
+                      <span key={i} style={{ fontSize: '11px', backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>{f}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="admin-venue-card-actions">
+                  <button onClick={() => { handleStartEdit(v); setVenueSubTab('create'); }} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'bold' }}>
+                    <Pencil size={16} /> 編輯
+                  </button>
+                  <button onClick={() => handleDeleteVenue(v.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'bold' }}>
+                    <Trash2 size={16} /> 刪除
+                  </button>
+                </div>
+              </div>
+            ))}
+            {venues.length === 0 && (
+              <div style={{ backgroundColor: 'white', padding: '32px', textAlign: 'center', borderRadius: '12px', border: '1px solid #e2e8f0', color: '#94a3b8' }}>
+                {hasActiveFilter ? "目前無符合條件的場地。" : "請選擇篩選條件以查詢場地。"}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Add/Edit Form */
+        <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ marginBottom: '16px', fontWeight: '800' }}>{editingVenueId ? "編輯場地資料" : "新增場地資料"}</h3>
+          <form onSubmit={async (e) => {
+            await handleAddVenue(e);
+            setVenueSubTab('list');
+          }} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="form-group">
+              <label className="form-label">場地名稱</label>
+              <input required type="text" className="form-input" placeholder="例如：板橋第二運動場" value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">縣市</label>
+              <select className="form-input" value={newVenue.city} onChange={e => setNewVenue({...newVenue, city: e.target.value})}>
+                <option value="桃園市">桃園市</option>
+                <option value="台北市">台北市</option>
+                <option value="新北市">新北市</option>
+                <option value="台中市">台中市</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">區域</label>
+              <input required type="text" className="form-input" placeholder="例如：板橋區" value={newVenue.district} onChange={e => setNewVenue({...newVenue, district: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">詳細地址</label>
+              <input required type="text" className="form-input" placeholder="例如：雙十路二段100號" value={newVenue.street_line} onChange={e => setNewVenue({...newVenue, street_line: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">主要運動球類</label>
+              <select required className="form-input" value={newVenue.sport_id} onChange={e => setNewVenue({...newVenue, sport_id: e.target.value})}>
+                <option value="">請選擇球類</option>
+                {sportsList.map(sport => <option key={sport.id} value={sport.id}>{sport.name}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">場地/球場數量</label>
+              <input required type="number" min="1" className="form-input" placeholder="例如：3" value={newVenue.court_count} onChange={e => setNewVenue({...newVenue, court_count: parseInt(e.target.value, 10) || 1})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label" style={{ marginBottom: '8px', display: 'block' }}>設施 (複選)</label>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#f8fafc' }}>
+                {defaultFacilities.map((fac) => (
+                  <label key={fac} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', color: '#334155' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={newVenue.facilities.includes(fac)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setNewVenue({ ...newVenue, facilities: [...newVenue.facilities, fac] });
+                        } else {
+                          setNewVenue({ ...newVenue, facilities: newVenue.facilities.filter(f => f !== fac) });
+                        }
+                      }}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                    />
+                    {fac}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <button type="submit" className="login-button" style={{ flex: 1 }}>
+                儲存
+              </button>
+              <button type="button" className="btn-outline" onClick={() => { handleCancelEdit(); setVenueSubTab('list'); }} style={{ flex: 1, margin: 0 }}>
+                取消
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderMobileAnnouncements = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h2 style={{ fontSize: '20px', margin: 0, fontWeight: '800' }}>系統公告管理</h2>
+      </div>
+
+      <div className="admin-sub-tabs">
+        <button 
+          className={`admin-sub-tab-btn ${announcementSubTab === 'list' ? 'active' : ''}`}
+          onClick={() => setAnnouncementSubTab('list')}
+        >
+          已發佈公告
+        </button>
+        <button 
+          className={`admin-sub-tab-btn ${announcementSubTab === 'create' ? 'active' : ''}`}
+          onClick={() => setAnnouncementSubTab('create')}
+        >
+          發佈新公告
+        </button>
+      </div>
+
+      {announcementSubTab === 'create' ? (
+        <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '800' }}><MessageSquarePlus size={20} /> 發佈新公告</h3>
+          <form onSubmit={async (e) => {
+            await handleAddAnnouncement(e);
+            setAnnouncementSubTab('list');
+          }}>
+            <div className="form-group">
+              <label className="form-label">發佈對象 (發送系統推播)</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', marginBottom: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: '#475569' }}>
+                  <input
+                    type="radio"
+                    name="announcementTarget"
+                    value="all"
+                    checked={announcementTarget === 'all'}
+                    onChange={() => setAnnouncementTarget('all')}
+                  />
+                  全部會員
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: '#475569' }}>
+                  <input
+                    type="radio"
+                    name="announcementTarget"
+                    value="organizer"
+                    checked={announcementTarget === 'organizer'}
+                    onChange={() => setAnnouncementTarget('organizer')}
+                  />
+                  特定球局房主
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: '#475569' }}>
+                  <input
+                    type="radio"
+                    name="announcementTarget"
+                    value="room_members"
+                    checked={announcementTarget === 'room_members'}
+                    onChange={() => setAnnouncementTarget('room_members')}
+                  />
+                  房間所有成員
+                </label>
+              </div>
+            </div>
+
+            {(announcementTarget === 'organizer' || announcementTarget === 'room_members') && (
+              <div className="form-group">
+                <label className="form-label" style={{ color: '#0284c7' }}>選擇目標球局</label>
+                <select
+                  required
+                  className="form-input"
+                  value={selectedBroadcastGameId}
+                  onChange={(e) => setSelectedBroadcastGameId(e.target.value)}
+                  style={{ borderColor: '#0284c7' }}
+                >
+                  <option value="">-- 請選擇球局 --</option>
+                  {parties.map((party) => (
+                    <option key={party.id} value={party.id}>
+                      【ID: {party.id}】{party.sportName} - {party.title} ({party.time})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label">公告標題</label>
+              <input required type="text" className="form-input" placeholder="輸入標題" value={newAnnouncement.title} onChange={e => setNewAnnouncement({...newAnnouncement, title: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">內容</label>
+              <textarea required className="form-input" rows="4" placeholder="輸入公告詳細內容..." value={newAnnouncement.content} onChange={e => setNewAnnouncement({...newAnnouncement, content: e.target.value})} style={{ resize: 'none' }}></textarea>
+            </div>
+            <div className="form-group">
+              <label className="form-label">公告圖片 (最多 3 張，可從裝置上傳)</label>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
+                {selectedFiles.map((fileItem) => (
+                  <div key={fileItem.id} style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                    <img src={fileItem.previewUrl} alt="upload-preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFiles(selectedFiles.filter(item => item.id !== fileItem.id));
+                      }}
+                      style={{ position: 'absolute', top: '2px', right: '2px', backgroundColor: 'rgba(239, 68, 68, 0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', fontSize: '12px', padding: 0 }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+                
+                {selectedFiles.length < 3 && (
+                  <label style={{ width: '80px', height: '80px', border: '2px dashed #cbd5e1', borderRadius: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: '#64748b' }}>
+                    <Plus size={20} />
+                    <span style={{ fontSize: '11px', marginTop: '4px' }}>選擇檔案</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (selectedFiles.length >= 3) {
+                          alert('最多只能選擇 3 張圖片。');
+                          return;
+                        }
+                        const previewUrl = URL.createObjectURL(file);
+                        setSelectedFiles(prev => [...prev, { id: Date.now().toString(), file, previewUrl }]);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+            <button type="submit" className="login-button">發佈公告</button>
+          </form>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {announcements.map(a => (
+            <div key={a.id} style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontWeight: '700', fontSize: '15px' }}>{a.title}</span>
+                <span style={{ color: '#94a3b8', fontSize: '11px' }}>{a.date}</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>{a.content}</p>
+              
+              {a.photo && a.photo.length > 0 && (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                  {a.photo.map((p, idx) => (
+                    <SafeImage key={idx} src={p} alt={`Photo ${idx+1}`} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', marginTop: '12px', paddingTop: '8px' }}>
+                <button 
+                  onClick={() => {
+                    setEditingAnnouncement(a);
+                    setEditFiles((a.photo || []).map((url, idx) => ({
+                      id: `existing-${idx}`,
+                      type: 'existing',
+                      url: url
+                    })));
+                  }}
+                  style={{ color: '#0284c7', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px' }}
+                >
+                  <Pencil size={16} /> 編輯
+                </button>
+                <button 
+                  onClick={() => handleDeleteAnnouncement(a.id)}
+                  style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px' }}
+                >
+                  <Trash2 size={16} /> 刪除
+                </button>
+              </div>
+            </div>
+          ))}
+          {announcements.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              目前尚無任何發佈的公告。
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderMobileFeedbacks = () => (
+    <div>
+      <h2 style={{ fontSize: '20px', marginBottom: '16px', fontWeight: '800' }}>使用者建議與回饋</h2>
+      
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <button 
+          onClick={() => setFeedbackFilter('pending')}
+          style={{ 
+            flex: 1,
+            padding: '8px', 
+            borderRadius: '20px', 
+            border: '1px solid #cbd5e1', 
+            backgroundColor: feedbackFilter === 'pending' ? '#7995a5' : 'white', 
+            color: feedbackFilter === 'pending' ? 'white' : '#475569',
+            fontWeight: 'bold',
+            fontSize: '13px',
+            cursor: 'pointer'
+          }}
+        >
+          待處理 ({feedbacks.filter(f => !f.is_handled).length})
+        </button>
+        <button 
+          onClick={() => setFeedbackFilter('handled')}
+          style={{ 
+            flex: 1,
+            padding: '8px', 
+            borderRadius: '20px', 
+            border: '1px solid #cbd5e1', 
+            backgroundColor: feedbackFilter === 'handled' ? '#7995a5' : 'white', 
+            color: feedbackFilter === 'handled' ? 'white' : '#475569',
+            fontWeight: 'bold',
+            fontSize: '13px',
+            cursor: 'pointer'
+          }}
+        >
+          已完成 ({feedbacks.filter(f => f.is_handled).length})
+        </button>
+      </div>
+      
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {feedbacks.filter(f => feedbackFilter === 'pending' ? !f.is_handled : f.is_handled).map(f => (
+          <div key={f.id} style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '14px' }}>{f.user_name || `User #${f.user}`}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8' }}>{f.created_at ? new Date(f.created_at).toLocaleDateString() : ''}</div>
+              </div>
+              <span style={{ 
+                fontSize: '10px', 
+                fontWeight: '700', 
+                padding: '2px 6px', 
+                borderRadius: '4px',
+                backgroundColor: f.type === '錯誤' ? '#fee2e2' : (f.type === '場地' ? '#fef3c7' : '#e0f2fe'),
+                color: f.type === '錯誤' ? '#ef4444' : (f.type === '場地' ? '#d97706' : '#0284c7')
+              }}>
+                {f.type}
+              </span>
+            </div>
+            
+            <p style={{ margin: 0, fontSize: '14px', color: '#475569', lineHeight: '1.5', marginBottom: '12px' }}>
+              {f.content}
+            </p>
+
+            {f.is_handled && (
+              <div style={{ backgroundColor: '#f8fafc', padding: '10px', borderRadius: '8px', borderLeft: '4px solid #10b981', fontSize: '13px', color: '#475569', marginBottom: '12px' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '12px', color: '#1e293b', marginBottom: '2px' }}>管理者的回覆：</div>
+                <div style={{ whiteSpace: 'pre-wrap' }}>{f.admin_reply || '無回覆內容。'}</div>
+              </div>
+            )}
+
+            {replyingFeedbackId === f.id && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                <textarea 
+                  placeholder="請輸入給使用者的回覆內容..."
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  style={{ width: '100%', minHeight: '60px', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', resize: 'none' }}
+                />
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <button onClick={() => { setReplyingFeedbackId(null); setReplyText(''); }} style={{ padding: '4px 10px', border: '1px solid #cbd5e1', background: 'white', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}>
+                    取消
+                  </button>
+                  <button onClick={() => handleCompleteFeedback(f.id)} style={{ padding: '4px 10px', border: 'none', background: '#10b981', color: 'white', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    送出
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
+              {!f.is_handled && replyingFeedbackId !== f.id && (
+                <button style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '700' }} onClick={() => { setReplyingFeedbackId(f.id); setReplyText(''); }}>
+                  <MessageSquareText size={16} /> 回覆
+                </button>
+              )}
+              <button style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '700' }} onClick={() => handleDeleteFeedback(f.id)}>
+                <Trash2 size={16} /> 刪除
+              </button>
+            </div>
+          </div>
+        ))}
+        {feedbacks.filter(f => feedbackFilter === 'pending' ? !f.is_handled : f.is_handled).length === 0 && (
+          <div style={{ textAlign: 'center', padding: '48px 16px', color: '#94a3b8' }}>
+            {feedbackFilter === 'pending' ? '目前沒有待處理的回饋。' : '目前沒有已完成的回饋。'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderMobileUserManagement = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h2 style={{ fontSize: '20px', margin: 0, fontWeight: '800' }}>會員帳號管理</h2>
+      </div>
+
+      {userSubTab === 'list' ? (
+        <div>
+          <form onSubmit={handleUmSearchSubmit} style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <input
+                type="text"
+                placeholder="搜尋 Email、手機、姓名..."
+                value={umSearchQuery}
+                onChange={(e) => setUmSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px 8px 32px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '13px',
+                  outline: 'none',
+                }}
+              />
+            </div>
+            <button type="submit" className="btn-primary" style={{ padding: '0 16px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px' }}>
+              搜尋
+            </button>
+            {umSearchQuery && (
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => {
+                  setUmSearchQuery('');
+                  handleFetchUmUsers('');
+                }}
+                style={{ padding: '0 10px', borderRadius: '8px', margin: 0 }}
+              >
+                清除
+              </button>
+            )}
+          </form>
+
+          {umIsLoadingUsers ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
+              <div className="upload-spinner" style={{ width: '24px', height: '24px', borderWidth: '2px' }}></div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {umUsers.map((u) => {
+                const isBanned = u.is_active === false;
+                const repStatus = getReputationStatus(u.credit_point ?? 90);
+                return (
+                  <div
+                    key={u.id}
+                    onClick={() => {
+                      handleSelectUmUser(u);
+                      setUserSubTab('detail');
+                    }}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: '1px solid #e2e8f0',
+                      backgroundColor: 'white',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        {u.avatar_url ? (
+                          <SafeImage src={u.avatar_url} alt="avatar" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#e2e8f0', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#64748b' }}>
+                            <UserCircle size={20} />
+                          </div>
+                        )}
+                        {isBanned && (
+                          <div style={{ position: 'absolute', bottom: '-2px', right: '-2px', backgroundColor: '#ef4444', color: 'white', borderRadius: '50%', width: '14px', height: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1.5px solid white' }}>
+                            <ShieldBan size={8} />
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ overflow: 'hidden' }}>
+                        <div style={{ fontWeight: '700', fontSize: '14px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {u.name || `會員 #${u.id}`}
+                          {isBanned && (
+                            <span style={{ fontSize: '9px', fontWeight: '800', backgroundColor: '#fee2e2', color: '#ef4444', padding: '1px 4px', borderRadius: '3px' }}>已停權</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {u.email}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '800', color: repStatus.color }}>{u.credit_point ?? 90} 分</div>
+                      </div>
+                      <ChevronRight size={14} color="#cbd5e1" />
+                    </div>
+                  </div>
+                );
+              })}
+              {umUsers.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>
+                  找不到符合條件 of 會員。
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Detail Profile view */
+        <div>
+          <button className="admin-mobile-back-btn" onClick={() => setUserSubTab('list')}>
+            <ArrowLeft size={16} /> 返回會員列表
+          </button>
+
+          {umSelectedUser && (
+            <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {umSelectedUser.avatar_url ? (
+                    <SafeImage src={umSelectedUser.avatar_url} alt="avatar" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#94a3b8' }}>
+                      <UserCircle size={28} />
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: '16px', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {umSelectedUser.name || '未填寫'}
+                      {umSelectedUser.is_active === false && (
+                        <span style={{ fontSize: '10px', fontWeight: '800', backgroundColor: '#fee2e2', color: '#ef4444', padding: '1px 4px', borderRadius: '3px' }}>停權中</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>ID: #{umSelectedUser.id}</div>
+                  </div>
+                </div>
+                <div>
+                  {umSelectedUser.is_active === false ? (
+                    <button onClick={() => handleUnbanUser(umSelectedUser.id)} className="btn-outline" style={{ borderColor: '#10b981', color: '#10b981', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', margin: 0 }}>
+                      恢復
+                    </button>
+                  ) : (
+                    <button onClick={() => handleBanUser(umSelectedUser.id)} className="btn-outline" style={{ borderColor: '#ef4444', color: '#ef4444', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', margin: 0 }}>
+                      停權
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Profile fields */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px', fontSize: '13px' }}>
+                <div>
+                  <div style={{ color: '#94a3b8', fontSize: '11px' }}>電子信箱</div>
+                  <div style={{ fontWeight: '700', color: '#334155', wordBreak: 'break-all' }}>{umSelectedUser.email}</div>
+                </div>
+                <div>
+                  <div style={{ color: '#94a3b8', fontSize: '11px' }}>聯絡電話</div>
+                  <div style={{ fontWeight: '700', color: '#334155' }}>{umSelectedUser.phone || '未填寫'}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '20px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#94a3b8', fontSize: '11px' }}>性別</div>
+                    <div style={{ fontWeight: '700', color: '#334155' }}>{umSelectedUserDetail?.gender || '未填寫'}</div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#94a3b8', fontSize: '11px' }}>生日</div>
+                    <div style={{ fontWeight: '700', color: '#334155' }}>{umSelectedUserDetail?.birthday || '未填寫'}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '20px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#94a3b8', fontSize: '11px' }}>Line ID</div>
+                    <div style={{ fontWeight: '700', color: '#334155' }}>{umSelectedUserDetail?.line_id || '未填寫'}</div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#94a3b8', fontSize: '11px' }}>Instagram</div>
+                    <div style={{ fontWeight: '700', color: '#334155' }}>{umSelectedUserDetail?.instagram || '未填寫'}</div>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: '#94a3b8', fontSize: '11px' }}>個人簡介</div>
+                  <div style={{ color: '#475569', fontStyle: 'italic', backgroundColor: '#f8fafc', padding: '8px', borderRadius: '6px', marginTop: '4px' }}>
+                    {umSelectedUserDetail?.bio || '尚未填寫簡介。'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Edit reputation score */}
+              <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <TrendingUp size={14} /> 調整信譽積分
+                </h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>目前分數</div>
+                    <div style={{ fontSize: '20px', fontWeight: '800', color: getReputationStatus(umSelectedUser.credit_point ?? 90).color }}>
+                      {umSelectedUser.credit_point ?? 90}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={umEditScore}
+                      onChange={(e) => setUmEditScore(e.target.value)}
+                      style={{ width: '60px', padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', textAlign: 'center', fontSize: '13px', fontWeight: '800' }}
+                    />
+                    <button
+                      onClick={() => handleUpdateUmReputation(umSelectedUser.id, umEditScore)}
+                      className="btn-primary"
+                      style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
+                    >
+                      修改
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hosted/Joined matches list */}
+              <div>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#1e293b', borderBottom: '1px solid #cbd5e1', paddingBottom: '6px' }}>
+                  活動歷史紀錄
+                </h4>
+                {umLoadingDetail ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                    <div className="upload-spinner" style={{ width: '20px', height: '20px', borderWidth: '2px' }}></div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: '800', color: '#64748b', marginBottom: '6px' }}>創立的房間 ({umSelectedUserDetail?.hosted_matches?.length || 0})</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto' }}>
+                        {(umSelectedUserDetail?.hosted_matches || []).map((m) => (
+                          <div key={m.id} onClick={() => navigate(`/party/${m.id}`)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #f1f5f9', backgroundColor: '#faf5ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                              <span style={{ fontSize: '10px', padding: '1px 4px', borderRadius: '3px', border: '1px solid', ...getSportBadgeStyle(m.sport_name) }}>{m.sport_name}</span>
+                              <span style={{ fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title || m.game_name}</span>
+                            </div>
+                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>{m.booking_date}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: '800', color: '#64748b', marginBottom: '6px' }}>參加的房間 ({umSelectedUserDetail?.joined_matches?.length || 0})</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto' }}>
+                        {(umSelectedUserDetail?.joined_matches || []).map((m) => (
+                          <div key={m.id} onClick={() => navigate(`/party/${m.id}`)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #f1f5f9', backgroundColor: '#f0fdf4', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                              <span style={{ fontSize: '10px', padding: '1px 4px', borderRadius: '3px', border: '1px solid', ...getSportBadgeStyle(m.sport_name) }}>{m.sport_name}</span>
+                              <span style={{ fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title || m.game_name}</span>
+                            </div>
+                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>{m.booking_date}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderMobileDemoGames = () => (
+    <div>
+      <h2 style={{ fontSize: '20px', marginBottom: '16px', fontWeight: '800' }}>房間狀態調整</h2>
+      
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', position: 'relative', alignItems: 'center' }}>
+          <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px' }} />
+          <input 
+            type="text" 
+            placeholder="搜尋房間名稱或場地..." 
+            value={demoSearchQuery}
+            onChange={e => setDemoSearchQuery(e.target.value)}
+            style={{ 
+              width: '100%', 
+              padding: '8px 10px 8px 30px', 
+              borderRadius: '6px', 
+              border: '1px solid #cbd5e1', 
+              fontSize: '13px', 
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {['全部', ...sportsList.map(sport => sport.name).filter(Boolean)].map(sport => (
+            <button
+              key={sport}
+              onClick={() => setDemoSportFilter(sport)}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '15px',
+                fontSize: '10px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                border: '1px solid',
+                backgroundColor: demoSportFilter === sport ? '#7995a5' : '#f1f5f9',
+                color: demoSportFilter === sport ? 'white' : '#475569',
+                borderColor: demoSportFilter === sport ? '#7995a5' : '#e2e8f0',
+              }}
+            >
+              {sport}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {parties
+          .filter(p => {
+            const matchesSport = demoSportFilter === '全部' || p.sportName === demoSportFilter;
+            const matchesSearch = p.title.toLowerCase().includes(demoSearchQuery.toLowerCase()) || 
+                                  p.location.toLowerCase().includes(demoSearchQuery.toLowerCase());
+            return matchesSport && matchesSearch;
+          })
+          .map(p => {
+            const badgeStyle = getSportBadgeStyle(p.sportName);
+            return (
+              <div 
+                key={p.id} 
+                style={{ 
+                  padding: '14px', 
+                  backgroundColor: '#ffffff', 
+                  borderRadius: '10px', 
+                  border: '1px solid #e2e8f0',
+                  borderLeft: `4px solid ${badgeStyle.borderColor || '#cbd5e1'}`,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px', gap: '6px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '14px', color: '#1e293b' }}>{p.title}</div>
+                  <span style={{ padding: '1px 6px', borderRadius: '3px', fontSize: '9px', fontWeight: '700', border: '1px solid', ...badgeStyle }}>
+                    {p.sportName}
+                  </span>
+                </div>
+                
+                <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div>📍 {p.location}</div>
+                  <div>
+                    狀態：
+                    <span style={{ 
+                      fontWeight: '800', 
+                      color: p.status === '已結束' ? '#ef4444' : p.status === '已開始' ? '#10b981' : '#f59e0b',
+                      backgroundColor: p.status === '已結束' ? '#fef2f2' : p.status === '已開始' ? '#f0fdf4' : '#fffbeb',
+                      padding: '1px 4px',
+                      borderRadius: '3px',
+                    }}>
+                      {p.status}
+                    </span>
+                    <span style={{ marginLeft: '4px' }}>({p.time})</span>
+                  </div>
+
+                  {editingGameTimeId === p.id && (
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap', backgroundColor: '#f8fafc', padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <input type="date" value={editGameDate} onChange={e => setEditGameDate(e.target.value)} style={{ padding: '2px 4px', fontSize: '10px' }} />
+                      <input type="text" value={editGameTimeSlot} onChange={e => setEditGameTimeSlot(e.target.value)} style={{ padding: '2px 4px', fontSize: '10px', width: '80px' }} />
+                      <button onClick={() => handleUpdateGameTime(p.id)} style={{ padding: '2px 6px', backgroundColor: '#7995a5', color: 'white', border: 'none', borderRadius: '3px', fontSize: '10px', fontWeight: 'bold' }}>儲存</button>
+                      <button onClick={() => setEditingGameTimeId(null)} style={{ padding: '2px 6px', backgroundColor: 'white', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '3px', fontSize: '10px' }}>取消</button>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                  <button className="btn-outline" style={{ fontSize: '10px', padding: '4px 6px', flex: 1 }} onClick={() => handleUpdatePartyStatus(p.id, '即將開始', '10 分鐘後')}>招募中</button>
+                  <button className="btn-outline" style={{ fontSize: '10px', padding: '4px 6px', flex: 1 }} onClick={() => handleUpdatePartyStatus(p.id, '已開始', '進行中')}>已開始</button>
+                  <button className="btn-outline" style={{ fontSize: '10px', padding: '4px 6px', flex: 1 }} onClick={() => handleUpdatePartyStatus(p.id, '已結束', '昨天')}>已結束</button>
+                  <button className="btn-outline" style={{ fontSize: '10px', padding: '4px 6px', flex: 1 }} onClick={() => handleUpdatePartyStatus(p.id, '招募中', '今日 20:00')}>還原</button>
+                  <button className="btn-outline" style={{ fontSize: '10px', padding: '4px 6px', flex: '1 1 100%', marginTop: '4px' }} onClick={() => handleSetTimeBefore30Min(p.id)}>B4 30MIN (前推30分鐘)</button>
+                </div>
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="admin-container" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: '#f8fafc', paddingBottom: '60px' }}>
+      <header style={{ backgroundColor: '#1e293b', color: 'white', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 100 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => navigate('/home')}>
+          <span style={{ fontSize: '18px', fontWeight: '800' }}>不倒翁 - 管理後台</span>
+        </div>
+        <button 
+          onClick={() => navigate('/home')}
+          style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+        >
+          <ArrowLeft size={16} /> 退出
+        </button>
+      </header>
+
+      <main style={{ flex: 1, padding: '16px', overflowY: 'auto', paddingBottom: '80px' }}>
+        {activeTab === 'dashboard' && renderMobileDashboard()}
+        {activeTab === 'venues' && renderMobileVenues()}
+        {activeTab === 'announcements' && renderMobileAnnouncements()}
+        {activeTab === 'feedbacks' && renderMobileFeedbacks()}
+        {activeTab === 'user_management' && renderMobileUserManagement()}
+        {activeTab === 'demo_games' && renderMobileDemoGames()}
+      </main>
+
+      <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '60px', backgroundColor: 'white', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-around', alignItems: 'center', zIndex: 100 }}>
+        <button onClick={() => setActiveTab('dashboard')} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: activeTab === 'dashboard' ? '#0284c7' : '#64748b' }}>
+          <LayoutDashboard size={20} />
+          <span style={{ fontSize: '10px' }}>分析</span>
+        </button>
+        <button onClick={() => setActiveTab('venues')} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: activeTab === 'venues' ? '#0284c7' : '#64748b' }}>
+          <MapPinned size={20} />
+          <span style={{ fontSize: '10px' }}>場地</span>
+        </button>
+        <button onClick={() => setActiveTab('announcements')} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: activeTab === 'announcements' ? '#0284c7' : '#64748b' }}>
+          <Bell size={20} />
+          <span style={{ fontSize: '10px' }}>公告</span>
+        </button>
+        <button onClick={() => setActiveTab('feedbacks')} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: activeTab === 'feedbacks' ? '#0284c7' : '#64748b' }}>
+          <MessageSquareText size={20} />
+          <span style={{ fontSize: '10px' }}>回饋</span>
+        </button>
+        <button onClick={() => setActiveTab('user_management')} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: activeTab === 'user_management' ? '#0284c7' : '#64748b' }}>
+          <Users size={20} />
+          <span style={{ fontSize: '10px' }}>會員</span>
+        </button>
+        <button onClick={() => setActiveTab('demo_games')} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: activeTab === 'demo_games' ? '#0284c7' : '#64748b' }}>
+          <Wrench size={20} />
+          <span style={{ fontSize: '10px' }}>工具</span>
+        </button>
+      </nav>
+
+      {/* 編輯系統公告 Modal (Mobile) */}
+      {editingAnnouncement && (
+        <div className="modal-overlay" onClick={() => setEditingAnnouncement(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '90%', width: '400px' }}>
+            <div className="modal-header">
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Pencil size={20} /> 編輯系統公告
+              </h3>
+              <button className="modal-close" onClick={() => setEditingAnnouncement(null)}>×</button>
+            </div>
+            <form onSubmit={handleEditAnnouncementSubmit} style={{ marginTop: '20px' }}>
+              <div className="form-group">
+                <label className="form-label">公告標題</label>
+                <input 
+                  required 
+                  type="text" 
+                  className="form-input" 
+                  value={editingAnnouncement.title} 
+                  onChange={e => setEditingAnnouncement({ ...editingAnnouncement, title: e.target.value })} 
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">內容</label>
+                <textarea 
+                  required 
+                  className="form-input" 
+                  rows="4" 
+                  value={editingAnnouncement.content} 
+                  onChange={e => setEditingAnnouncement({ ...editingAnnouncement, content: e.target.value })}
+                  style={{ resize: 'none' }}
+                ></textarea>
+              </div>
+              <div className="form-group">
+                <label className="form-label">公告圖片 (最多 3 張，可從裝置上傳)</label>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
+                  {editFiles.map((item) => (
+                    <div key={item.id} style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                      <SafeImage 
+                        src={item.type === 'existing' ? item.url : item.previewUrl} 
+                        alt="upload-preview" 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditFiles(editFiles.filter(f => f.id !== item.id));
+                        }}
+                        style={{ position: 'absolute', top: '2px', right: '2px', backgroundColor: 'rgba(239, 68, 68, 0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', fontSize: '12px', padding: 0 }}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+                  
+                  {editFiles.length < 3 && (
+                    <label style={{ width: '80px', height: '80px', border: '2px dashed #cbd5e1', borderRadius: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: '#64748b' }}>
+                      <Plus size={20} />
+                      <span style={{ fontSize: '11px', marginTop: '4px' }}>選擇檔案</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (editFiles.length >= 3) {
+                            alert('最多只能選擇 3 張圖片。');
+                            return;
+                          }
+                          const previewUrl = URL.createObjectURL(file);
+                          setEditFiles(prev => [...prev, {
+                            id: Date.now().toString(),
+                            type: 'new',
+                            file,
+                            previewUrl
+                          }]);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '28px' }}>
+                <button type="button" className="btn-outline" style={{ flex: 1, padding: '12px', borderRadius: '12px' }} onClick={() => setEditingAnnouncement(null)}>取消</button>
+                <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', borderRadius: '12px' }}>儲存修改</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
+
 
 export default Admin;
