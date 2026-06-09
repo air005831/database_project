@@ -11,7 +11,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'email', 'phone', 'name', 'birthday', 'age', 'credit_point', 'role', 'line_id', 'instagram')
+        fields = ('id', 'email', 'phone', 'name', 'birthday', 'gender', 'age', 'credit_point', 'role', 'line_id', 'instagram')
         read_only_fields = ('credit_point', 'role')
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -58,7 +58,7 @@ class AddressSerializer(serializers.ModelSerializer):
 class VenueSerializer(serializers.ModelSerializer):
     address_detail = AddressSerializer(source='address', read_only=True)
     facilities = serializers.SlugRelatedField(many=True, read_only=True, slug_field='name')
-    # 1. 定義寫入專用的唯寫虛擬欄位 (Write-Only Fields)
+    # 1. 定義寫入專用的虛擬欄位 (Write-Only Fields)
     city = serializers.CharField(write_only=True, required=False, allow_blank=True)
     district = serializers.CharField(write_only=True, required=False, allow_blank=True)
     street_line = serializers.CharField(write_only=True, required=False, allow_blank=True)
@@ -71,22 +71,16 @@ class VenueSerializer(serializers.ModelSerializer):
             'facilities', 'latitude', 'longitude',
             'city', 'district', 'street_line', 'sport_id', 'court_count'
         )
-    # 2. 於 representation 中動態加入 court_count，避免欄位名稱衝突
+    # 2. 回傳資料時，動態加入 court_count 與 sports，方便前端讀取
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        # 統計關聯的球場數量
+        # 統計該場館關聯的球場數量
         representation['court_count'] = instance.courts.count()
-        # 動態加入讀取的地址欄位，讓前端可以直接讀取 v.city 和 v.district
-        if instance.address:
-            representation['city'] = instance.address.city
-            representation['district'] = instance.address.district
-            representation['street_line'] = instance.address.street_line
-        else:
-            representation['city'] = ""
-            representation['district'] = ""
-            representation['street_line'] = ""
+        # 取得該場館所有球場涉及的運動種類名稱 (去重)
+        sports_queryset = Sport.objects.filter(courts__venue=instance).distinct()
+        representation['sports'] = [sport.name for sport in sports_queryset]
         return representation
-    # 3. 處理 POST 建立邏輯
+    # 3. 處理 POST /api/venues/ 建立場地邏輯
     def create(self, validated_data):
         city = validated_data.pop('city', None)
         district = validated_data.pop('district', None)
@@ -103,7 +97,7 @@ class VenueSerializer(serializers.ModelSerializer):
             validated_data['address'] = address_obj
         # 建立場館
         venue = super().create(validated_data)
-        # 根據 court_count 數量與 sport_id 自動生成球場
+        # 根據 court_count 數量與 sport_id 自動生成球場並綁定運動項目
         if court_count and sport_id:
             try:
                 sport_obj = Sport.objects.get(id=sport_id)
@@ -112,14 +106,18 @@ class VenueSerializer(serializers.ModelSerializer):
                     court.sports.add(sport_obj)
             except Sport.DoesNotExist:
                 pass
-        # 處理 facilities 寫入
-        facilities_data = self.initial_data.get('facilities', None)
-        if facilities_data is not None:
-            for facility_name in facilities_data:
-                facility_obj, created = Facility.objects.get_or_create(name=facility_name)
-                venue.facilities.add(facility_obj)
+        # 處理設施標籤 (Facilities) 的 ManyToMany 綁定
+        facilities_data = self.initial_data.get('facilities', [])
+        if isinstance(facilities_data, list):
+            from api_v1.models import Facility
+            facility_objs = []
+            for f_name in facilities_data:
+                if f_name:
+                    fac, _ = Facility.objects.get_or_create(name=f_name)
+                    facility_objs.append(fac)
+            venue.facilities.set(facility_objs)
         return venue
-    # 4. 處理 PATCH / PUT 更新邏輯
+    # 4. 處理 PATCH/PUT /api/venues/<id>/ 更新場地邏輯
     def update(self, instance, validated_data):
         city = validated_data.pop('city', None)
         district = validated_data.pop('district', None)
@@ -142,47 +140,37 @@ class VenueSerializer(serializers.ModelSerializer):
         # 更新場館資訊
         venue = super().update(instance, validated_data)
         # 同步球場數量與球場運動種類
-        if court_count is not None or sport_id is not None:
+        if court_count is not None and sport_id is not None:
             try:
-                sport_obj = None
-                if sport_id is not None:
-                    sport_obj = Sport.objects.get(id=sport_id)
-                
+                sport_obj = Sport.objects.get(id=sport_id)
                 current_courts = list(venue.courts.all())
                 current_count = len(current_courts)
                 
-                # 如果要增設球場但沒有提供 sport_id，優先從現有球場取得運動種類
-                if court_count is not None and current_count < court_count and sport_obj is None:
-                    if current_count > 0:
-                        sport_obj = current_courts[0].sports.first()
-                    if sport_obj is None:
-                        sport_obj = Sport.objects.first()
-                        
-                # 處理球場數量的增刪
-                if court_count is not None:
-                    if current_count < court_count:
-                        for _ in range(court_count - current_count):
-                            court = Court.objects.create(venue=venue)
-                            if sport_obj:
-                                court.sports.add(sport_obj)
-                    elif current_count > court_count:
-                        courts_to_delete = current_courts[court_count:]
-                        for c in courts_to_delete:
-                            c.delete()
-                            
-                # 如果有提供 sport_id，確保所有剩餘的球場均更新為指定的運動種類
-                if sport_id is not None and sport_obj is not None:
-                    for court in venue.courts.all():
-                        court.sports.set([sport_obj])
+                # 若目前球場數少於設定數 -> 自動新增球場
+                if current_count < court_count:
+                    for _ in range(court_count - current_count):
+                        court = Court.objects.create(venue=venue)
+                        court.sports.add(sport_obj)
+                # 若目前球場數多於設定數 -> 自動刪除尾部多餘的球場
+                elif current_count > court_count:
+                    courts_to_delete = current_courts[court_count:]
+                    for c in courts_to_delete:
+                        c.delete()
+                # 確保剩餘的球場皆綁定對應的運動種類
+                for court in venue.courts.all():
+                    court.sports.set([sport_obj])
             except Sport.DoesNotExist:
                 pass
-        # 處理 facilities 更新
-        facilities_data = self.initial_data.get('facilities', None)
-        if facilities_data is not None:
-            venue.facilities.clear()
-            for facility_name in facilities_data:
-                facility_obj, created = Facility.objects.get_or_create(name=facility_name)
-                venue.facilities.add(facility_obj)
+        # 同步更新設施 ManyToMany 綁定
+        facilities_data = self.initial_data.get('facilities')
+        if isinstance(facilities_data, list):
+            from api_v1.models import Facility
+            facility_objs = []
+            for f_name in facilities_data:
+                if f_name:
+                    fac, _ = Facility.objects.get_or_create(name=f_name)
+                    facility_objs.append(fac)
+            venue.facilities.set(facility_objs)
         return venue
 
 
