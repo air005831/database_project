@@ -175,7 +175,7 @@ class Venue(models.Model):
         ('semi-outdoor', 'Semi-Outdoor'),
     )
     id = models.AutoField(primary_key=True, db_column='venue_id')
-    address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True, db_column='address_id', related_name='venues')
+    address = models.ForeignKey(Address, on_delete=models.CASCADE, db_column='address_id', related_name='venues')
     name = models.CharField(max_length=100)
     opening_hours = models.JSONField(null=True, blank=True)
     types = models.CharField(max_length=20, choices=VENUE_TYPES, null=True, blank=True)
@@ -438,6 +438,16 @@ class GameBulletin(models.Model):
 
     class Meta:
         db_table = 'game_bulletins'
+        managed = FORCE_SQLITE
+
+class TaiwanRegion(models.Model):
+    id = models.AutoField(primary_key=True, db_column='region_id')
+    city = models.CharField(max_length=50)
+    district = models.CharField(max_length=50)
+
+    class Meta:
+        db_table = 'taiwan_regions'
+        unique_together = ('city', 'district')
         managed = FORCE_SQLITE
 
 from django.db.models.signals import post_save, post_delete

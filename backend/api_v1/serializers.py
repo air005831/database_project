@@ -3,7 +3,7 @@ from .models import (
     User, Sport, UserSportLevel, Address, Facility, Venue, Court, GameMatch, 
     MatchParticipant, FavoriteGame, 
     PenaltyRule, Report, Blacklist, Notification, GameBulletin,
-    Feedback, Announcement
+    Feedback, Announcement, TaiwanRegion
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -114,8 +114,22 @@ class VenueSerializer(serializers.ModelSerializer):
             validated_data['address'] = address_obj
         # 建立場館
         venue = super().create(validated_data)
-        # 根據 court_count 數量與 sport_id 自動生成球場
-        if court_count and sport_id:
+        # 根據 court_counts 批量自動生成球場
+        court_counts = self.initial_data.get('court_counts', None)
+        if court_counts:
+            for item in court_counts:
+                s_id = item.get('sport_id')
+                count = item.get('count', 0)
+                if s_id and count:
+                    try:
+                        sport_obj = Sport.objects.get(id=s_id)
+                        for _ in range(count):
+                            court = Court.objects.create(venue=venue)
+                            court.sports.add(sport_obj)
+                    except Sport.DoesNotExist:
+                        pass
+        # 根據 court_count 數量與 sport_id 自動生成球場 (備用/舊版)
+        elif court_count and sport_id:
             try:
                 sport_obj = Sport.objects.get(id=sport_id)
                 for _ in range(court_count):
@@ -199,14 +213,38 @@ class VenueSerializer(serializers.ModelSerializer):
 
 class CourtSerializer(serializers.ModelSerializer):
     venue_detail = VenueSerializer(source='venue', read_only=True)
-    sports = serializers.SerializerMethodField()
+    sports = serializers.PrimaryKeyRelatedField(queryset=Sport.objects.all(), many=True, write_only=True, required=False)
+    sport_names = serializers.SerializerMethodField(read_only=True)
+    sport_ids = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Court
-        fields = ('id', 'venue', 'venue_detail', 'name', 'occupied', 'base_price', 'sports')
+        fields = ('id', 'venue', 'venue_detail', 'name', 'occupied', 'base_price', 'sports', 'sport_names', 'sport_ids')
 
-    def get_sports(self, obj):
+    def get_sport_names(self, obj):
         return [sport.chinese_name for sport in obj.sports.all()]
+
+    def get_sport_ids(self, obj):
+        return [sport.id for sport in obj.sports.all()]
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        # Keep backward compatibility: the frontend expects the 'sports' key to contain the list of chinese names.
+        ret['sports'] = ret.get('sport_names', [])
+        return ret
+
+    def create(self, validated_data):
+        sports = validated_data.pop('sports', [])
+        court = Court.objects.create(**validated_data)
+        court.sports.set(sports)
+        return court
+
+    def update(self, instance, validated_data):
+        sports = validated_data.pop('sports', None)
+        court = super().update(instance, validated_data)
+        if sports is not None:
+            court.sports.set(sports)
+        return court
 
 class MatchParticipantUserSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField(source='user.id')
@@ -792,3 +830,8 @@ class AnnouncementSerializer(serializers.ModelSerializer):
             if not isinstance(url, str):
                 raise serializers.ValidationError("公告圖片的 URL 必須是字串（String）。")
         return value
+
+class TaiwanRegionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaiwanRegion
+        fields = '__all__'

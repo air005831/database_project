@@ -14,7 +14,7 @@ from .models import (
      Sport, UserSportLevel, Address, Venue, Court, CourtConflict,
      GameMatch, MatchParticipant, FavoriteGame,
      PenaltyRule, Report, Blacklist,
-     Notification, GameBulletin, Feedback, Announcement, Facility
+     Notification, GameBulletin, Feedback, Announcement, Facility, TaiwanRegion
 )
 from .serializers import (
      UserSerializer, UserProfileSerializer, SportSerializer, UserSportLevelSerializer,
@@ -23,7 +23,7 @@ from .serializers import (
      MatchParticipantSerializer, FavoriteGameSerializer,
      PenaltyRuleSerializer, ReportSerializer,
      BlacklistSerializer, NotificationSerializer, GameBulletinSerializer,
-     FeedbackSerializer, AnnouncementSerializer
+     FeedbackSerializer, AnnouncementSerializer, TaiwanRegionSerializer
 )
 
 User = get_user_model()
@@ -448,6 +448,32 @@ class VenueViewSet(viewsets.ModelViewSet):
         for f_name in facilities_list:
             facility, _ = Facility.objects.get_or_create(name=f_name)
             venue.facilities.add(facility)
+            
+        # 4. Handle Court Creation (Bulk court_counts or legacy sport_id & court_count)
+        court_counts = request.data.get('court_counts', None)
+        sport_id = request.data.get('sport_id')
+        court_count = request.data.get('court_count')
+        
+        if court_counts:
+            for item in court_counts:
+                s_id = item.get('sport_id')
+                count = item.get('count', 0)
+                if s_id and count:
+                    try:
+                        sport_obj = Sport.objects.get(id=s_id)
+                        for _ in range(count):
+                            court = Court.objects.create(venue=venue)
+                            court.sports.add(sport_obj)
+                    except Sport.DoesNotExist:
+                        pass
+        elif court_count and sport_id:
+            try:
+                sport_obj = Sport.objects.get(id=sport_id)
+                for _ in range(int(court_count)):
+                    court = Court.objects.create(venue=venue)
+                    court.sports.add(sport_obj)
+            except (Sport.DoesNotExist, ValueError):
+                pass
             
         serializer = self.get_serializer(venue)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -2054,3 +2080,8 @@ def upload_image(request):
     file_url = request.build_absolute_uri(settings.MEDIA_URL + path)
     
     return Response({"url": file_url}, status=status.HTTP_201_CREATED)
+
+class TaiwanRegionViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = TaiwanRegion.objects.all().order_by('city', 'district')
+    serializer_class = TaiwanRegionSerializer
+    permission_classes = [permissions.AllowAny]

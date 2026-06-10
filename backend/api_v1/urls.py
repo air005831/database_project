@@ -5,7 +5,7 @@ from .views import (
     GameMatchViewSet, FavoriteGameViewSet, ReportViewSet,
     AdminGameViewSet, AdminBroadcastViewSet, NotificationViewSet, OpenDataViewSet,
     AdminAnalyticsView, DemoWeatherView, FeedbackViewSet, AnnouncementViewSet,
-    upload_image
+    upload_image, TaiwanRegionViewSet
 )
 
 class OptionalSlashRouter(DefaultRouter):
@@ -28,6 +28,7 @@ router.register('notifications', NotificationViewSet, basename='notification')
 router.register('announcements', AnnouncementViewSet, basename='announcement')
 router.register('feedback', FeedbackViewSet, basename='feedback')
 router.register('admin/feedbacks', FeedbackViewSet, basename='admin-feedback')
+router.register('taiwan_regions', TaiwanRegionViewSet, basename='taiwanregion')
 
 urlpatterns = [
     path('', include(router.urls)),

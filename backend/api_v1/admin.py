@@ -3,7 +3,7 @@ from .models import (
     User, Sport, UserSportLevel, Address, Facility, Venue, Court, 
     CourtConflict, GameMatch, MatchParticipant,
     FavoriteGame, PenaltyRule, Report, Blacklist,
-    Notification, Feedback, Announcement
+    Notification, Feedback, Announcement, TaiwanRegion
 )
 
 @admin.register(Feedback)
@@ -96,3 +96,9 @@ class BlacklistAdmin(admin.ModelAdmin):
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ('match', 'message', 'is_read', 'created_at')
     list_filter = ('is_read', 'created_at')
+
+@admin.register(TaiwanRegion)
+class TaiwanRegionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'city', 'district')
+    list_filter = ('city',)
+    search_fields = ('city', 'district')
