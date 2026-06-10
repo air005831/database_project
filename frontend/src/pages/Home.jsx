@@ -127,45 +127,6 @@ function Home() {
         setAllVenues(aggregatedVenues);
       }
 
-      const reverseLevelMap = {
-        'C': '休閒', 'B': '業餘', 'A': '高手', 'S': '高手',
-        '新手': '休閒', '休閒': '休閒', '高手': '高手'
-      };
-
-      const formattedGames = (Array.isArray(gamesResult) ? gamesResult : gamesResult.results || []).map(party => {
-        const rawType = party.type || party.sport_type || party.sport_name || '運動';
-        const originalLevel = party.level || party.target_level || 'C';
-        const rawLevel = reverseLevelMap[originalLevel] || originalLevel;
-        let venueStatus = 'pending';
-        if (party.booking_status === '已佔到/已預約' || party.booking_status === 'confirmed') {
-          venueStatus = 'confirmed';
-        } else if (party.booking_status === '未佔到/未預約' || party.booking_status === 'failed') {
-          venueStatus = 'failed';
-        }
-        
-        return {
-          ...party,
-          id: party.id,
-          venueStatus,
-          title: party.game_name || party.title || '無標題揪團',
-          type: rawType,
-          level: rawLevel,
-          genderLimit: party.genderLimit || party.gender_limit || '不限',
-          location: party.location || party.venue_name || '地點未定',
-          time: party.time || (party.booking_date ? `${party.booking_date} ${party.time_slot || ''}` : '時間未定'),
-          currentPlayers: party.currentPlayers ?? party.current_players ?? 0,
-          maxPlayers: party.maxPlayers ?? party.most_players ?? 6,
-          currentWaitlist: party.currentWaitlist ?? party.current_waitlist ?? 0,
-          maxWaitlist: party.maxWaitlist ?? party.max_waitlist ?? 2,
-          description: party.game_note || party.description,
-          participants: party.participants || [],
-          participant_ids: party.participant_ids || [],
-          waitlist_ids: party.waitlist_ids || [],
-          creator_id: party.creator_id,
-        };
-      });
-      
-      setParties(formattedGames);
       const mappedNotifications = (Array.isArray(notificationsResult) ? notificationsResult : []).map(n => ({
         id: n.notification_id || n.id,
         text: n.message || '',
