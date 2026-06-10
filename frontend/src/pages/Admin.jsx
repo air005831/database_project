@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, MapPinned, Bell, Plus, Trash2, Pencil, ArrowLeft, TrendingUp, BarChart3, MessageSquarePlus, MessageSquareText, Wrench, RefreshCcw, UserCircle, CloudRain, CheckCircle, XCircle, Search, Filter, Users, ShieldBan, Eye, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, MapPinned, Bell, Plus, Trash2, Pencil, ArrowLeft, TrendingUp, BarChart3, MessageSquarePlus, MessageSquareText, Wrench, RefreshCcw, UserCircle, CloudRain, CheckCircle, XCircle, Search, Filter, Users, ShieldBan, Eye, ChevronRight, Settings, ChevronDown } from 'lucide-react';
 import adminApi from '../api/admin';
 import venuesApi from '../api/venues';
 import gamesApi from '../api/games';
@@ -75,6 +75,12 @@ function Admin() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [weatherIndex, setWeatherIndex] = useState(80);
 
+  // 回饋類型管理狀態
+  const [feedbackTypes, setFeedbackTypes] = useState([]);
+  const [newTypeName, setNewTypeName] = useState('');
+  const [expandedVenueId, setExpandedVenueId] = useState(null);
+  const [newCourtName, setNewCourtName] = useState('');
+
   // 系統公告 & 推播專用狀態
   const [announcementTarget, setAnnouncementTarget] = useState('all'); // 'all', 'organizer', 'room_members'
   const [selectedBroadcastGameId, setSelectedBroadcastGameId] = useState('');
@@ -138,7 +144,8 @@ function Admin() {
           facilities: v.facilities || [],
           opening_hours: v.opening_hours || null,
           court_count: v.court_count || 0,
-          sports: v.sports || []
+          sports: v.sports || [],
+          courts: v.courts || []
         }));
 
         // 如果目前沒有篩選條件，代表這是完整的場地列表，儲存下來用於動態生成篩選選單
@@ -299,6 +306,14 @@ function Admin() {
         }
       } catch (error) {
         console.error('Fetch users error:', error);
+      }
+
+      // 7. 載入回饋類型
+      try {
+        const ftData = await adminApi.getFeedbackTypes();
+        setFeedbackTypes(Array.isArray(ftData) ? ftData : (ftData.results || []));
+      } catch (err) {
+        console.error('FeedbackType fetch error:', err);
       }
     };
     fetchAdminData();
@@ -664,6 +679,74 @@ function Admin() {
     }
   };
 
+  const handleAddFeedbackType = async () => {
+    if (!newTypeName.trim()) return;
+    try {
+      await adminApi.createFeedbackType(newTypeName);
+      const ftData = await adminApi.getFeedbackTypes();
+      setFeedbackTypes(Array.isArray(ftData) ? ftData : (ftData.results || []));
+      setNewTypeName('');
+      alert('已新增回饋類型！');
+    } catch (err) {
+      console.error('Add feedback type error:', err);
+      alert('新增失敗');
+    }
+  };
+
+  const handleDeleteFeedbackType = async (id) => {
+    if (!window.confirm('確定要刪除此回饋類型嗎？')) return;
+    try {
+      await adminApi.deleteFeedbackType(id);
+      setFeedbackTypes(feedbackTypes.filter(t => t.id !== id));
+      alert('已刪除回饋類型');
+    } catch (err) {
+      console.error('Delete feedback type error:', err);
+      alert('刪除失敗');
+    }
+  };
+
+  const handleAddCourt = async (venueId) => {
+    if (!newCourtName.trim()) return;
+    try {
+      await adminApi.createCourt({ venue: venueId, name: newCourtName });
+      const params = {};
+      if (filterCity) params.city = filterCity;
+      if (filterDistrict) params.district = filterDistrict;
+      if (filterSport) params.sport_id = filterSport;
+      const venuesData = await venuesApi.getVenues(params);
+      const rawVenues = Array.isArray(venuesData) ? venuesData : (venuesData.results || []);
+      setVenues(rawVenues.map(v => ({
+        id: v.id,
+        name: v.name,
+        city: v.address_detail?.city || '',
+        district: v.address_detail?.district || '',
+        address: v.address_detail?.street_line || '',
+        facilities: v.facilities || [],
+        opening_hours: v.opening_hours || null,
+        court_count: v.court_count || 0,
+        sports: v.sports || [],
+        courts: v.courts || []
+      })));
+      setNewCourtName('');
+      alert('已成功新增球場！');
+    } catch (error) {
+      console.error('Add court error:', error);
+      alert('新增球場失敗');
+    }
+  };
+
+  const handleDeleteCourt = async (venueId, courtId) => {
+    if (!window.confirm('確定要刪除此球場嗎？')) return;
+    try {
+      await adminApi.deleteCourt(courtId);
+      setVenues(venues.map(v => v.id === venueId ? { ...v, courts: (v.courts || []).filter(c => c.id !== courtId) } : v));
+      alert('球場已刪除');
+    } catch (error) {
+      console.error('Delete court error:', error);
+      alert('刪除失敗');
+    }
+  };
+
   const handleCompleteFeedback = async (id) => {
     if (!replyText.trim()) {
       alert('請輸入給使用者的回覆內容！');
@@ -861,6 +944,12 @@ function Admin() {
           >
             <Wrench size={20} /> 房間狀態調整
           </button>
+          <button 
+            className={`admin-nav-btn ${activeTab === 'feedback-types' ? 'active' : ''}`}
+            onClick={() => setActiveTab('feedback-types')}
+          >
+            <Settings size={20} /> 回饋類型管理
+          </button>
         </nav>
 
         <button 
@@ -1024,28 +1113,74 @@ function Admin() {
                 </thead>
                 <tbody>
                   {venues.map(v => (
-                    <tr key={v.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '16px', fontWeight: '700' }}>{v.name}</td>
-                      <td style={{ padding: '16px' }}>{v.address}</td>
-                      <td style={{ padding: '16px', fontWeight: '600' }}>
-                        {v.court_count ? `${v.court_count} 個球場` : '0 個球場'}
-                      </td>
-                      <td style={{ padding: '16px' }}>
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                          {v.facilities.map((f, i) => (
-                            <span key={i} style={{ fontSize: '11px', backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>{f}</span>
-                          ))}
-                        </div>
-                      </td>
-                      <td style={{ padding: '16px' }}>
-                        <button onClick={() => handleStartEdit(v)} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', marginRight: '12px' }} title="編輯場地">
-                          <Pencil size={18} />
-                        </button>
-                        <button onClick={() => handleDeleteVenue(v.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }} title="刪除場地">
-                          <Trash2 size={18} />
-                        </button>
-                      </td>
-                    </tr>
+                    <React.Fragment key={v.id}>
+                      <tr style={{ borderBottom: '1px solid #e2e8f0', cursor: 'pointer', backgroundColor: expandedVenueId === v.id ? '#f8fafc' : 'transparent' }} onClick={() => setExpandedVenueId(expandedVenueId === v.id ? null : v.id)}>
+                        <td style={{ padding: '16px', fontWeight: '700' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {expandedVenueId === v.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            {v.name}
+                          </div>
+                        </td>
+                        <td style={{ padding: '16px' }}>{v.address}</td>
+                        <td style={{ padding: '16px', fontWeight: '600' }}>
+                          {v.court_count ? `${v.court_count} 個球場` : '0 個球場'}
+                        </td>
+                        <td style={{ padding: '16px' }}>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {v.facilities.map((f, i) => (
+                              <span key={i} style={{ fontSize: '11px', backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>{f}</span>
+                            ))}
+                          </div>
+                        </td>
+                        <td style={{ padding: '16px' }}>
+                          <button onClick={(e) => { e.stopPropagation(); handleStartEdit(v); }} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', marginRight: '12px' }} title="編輯場地">
+                            <Pencil size={18} />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteVenue(v.id); }} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }} title="刪除場地">
+                            <Trash2 size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                      {expandedVenueId === v.id && (
+                        <tr style={{ backgroundColor: '#f8fafc' }}>
+                          <td colSpan="5" style={{ padding: '16px 40px' }}>
+                            <div style={{ borderLeft: '4px solid #7995a5', paddingLeft: '20px' }}>
+                              <h4 style={{ marginBottom: '12px', fontSize: '14px', fontWeight: '700' }}>球場管理 ({v.courts?.length || 0})</h4>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                                {(v.courts || []).map(court => (
+                                  <div key={court.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                    <span style={{ fontSize: '14px' }}>{court.name}</span>
+                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteCourt(v.id, court.id); }} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </div>
+                                ))}
+                                {(v.courts || []).length === 0 && (
+                                  <div style={{ fontSize: '13px', color: '#94a3b8' }}>尚未建立個別球場。</div>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <input 
+                                  type="text" 
+                                  className="form-input"
+                                  placeholder="新球場名稱 (如: A 號場)" 
+                                  value={newCourtName}
+                                  onChange={(e) => setNewCourtName(e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', margin: 0, width: '200px' }}
+                                />
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleAddCourt(v.id); }}
+                                  style={{ padding: '6px 12px', backgroundColor: '#7995a5', color: 'white', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 'bold' }}
+                                >
+                                  新增球場
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   ))}
                   {venues.length === 0 && (
                     <tr>
@@ -1824,7 +1959,60 @@ function Admin() {
           </div>
         )}
 
-        {/* 房間狀態調整 Tab */}
+        {/* 回饋類型管理 Tab */}
+        {activeTab === 'feedback-types' && (
+          <div>
+            <h2 style={{ marginBottom: '24px' }}>回饋類型管理</h2>
+            <div style={{ backgroundColor: 'white', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '32px' }}>
+              <h3 style={{ marginBottom: '20px' }}>新增類型</h3>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  placeholder="類型名稱 (如: 功能建議、檢舉玩家)" 
+                  value={newTypeName}
+                  onChange={(e) => setNewTypeName(e.target.value)}
+                  style={{ flex: 1, margin: 0 }}
+                />
+                <button className="btn-primary" onClick={handleAddFeedbackType}>
+                  <Plus size={18} /> 新增
+                </button>
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead style={{ backgroundColor: '#f1f5f9' }}>
+                  <tr>
+                    <th style={{ padding: '16px' }}>ID</th>
+                    <th style={{ padding: '16px' }}>名稱</th>
+                    <th style={{ padding: '16px', textAlign: 'right' }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {feedbackTypes.map(t => (
+                    <tr key={t.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: '16px' }}>{t.id}</td>
+                      <td style={{ padding: '16px', fontWeight: '700' }}>{t.name}</td>
+                      <td style={{ padding: '16px', textAlign: 'right' }}>
+                        <button onClick={() => handleDeleteFeedbackType(t.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {feedbackTypes.length === 0 && (
+                    <tr>
+                      <td colSpan="3" style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>尚未建立任何回饋類型。</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+                {/* 房間狀態調整 Tab */}
         {activeTab === 'demo_games' && (
           <div className="admin-content">
             <h2 style={{ marginBottom: '8px', color: '#1e293b' }}>🛠️ 房間狀態調整 (Room Status Tool)</h2>
@@ -3187,6 +3375,22 @@ function Admin() {
                       />
                     </label>
                   )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '28px' }}>
+                <button type="button" className="btn-outline" style={{ flex: 1, padding: '12px', borderRadius: '12px' }} onClick={() => setEditingAnnouncement(null)}>取消</button>
+                <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', borderRadius: '12px' }}>儲存修改</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+export default Admin;
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '12px', marginTop: '28px' }}>
