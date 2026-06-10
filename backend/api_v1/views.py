@@ -14,7 +14,7 @@ from .models import (
      Sport, UserSportLevel, Address, Venue, Court, CourtConflict,
      GameMatch, MatchParticipant, FavoriteGame,
      PenaltyRule, Report, Blacklist,
-     Notification, GameBulletin, Feedback, Announcement, Facility, TaiwanRegion
+     Notification, GameBulletin, Feedback, Announcement, Facility, TaiwanRegion, FeedbackType
 )
 from .serializers import (
      UserSerializer, UserProfileSerializer, SportSerializer, UserSportLevelSerializer,
@@ -23,7 +23,8 @@ from .serializers import (
      MatchParticipantSerializer, FavoriteGameSerializer,
      PenaltyRuleSerializer, ReportSerializer,
      BlacklistSerializer, NotificationSerializer, GameBulletinSerializer,
-     FeedbackSerializer, AnnouncementSerializer, TaiwanRegionSerializer
+     FeedbackSerializer, AnnouncementSerializer, TaiwanRegionSerializer, FeedbackTypeSerializer,
+     UserAdminDetailSerializer
 )
 
 User = get_user_model()
@@ -87,14 +88,17 @@ def check_and_update_credit(user):
         user.save()
 
 class IsNotBanned(permissions.BasePermission):
-    message = "您的信譽分數已低於或等於 40 分，帳號已被永久停權。"
+    message = "您的帳號已被列入黑名單或信譽分數已低於或等於 40 分，無法進行此操作。"
     
     def has_permission(self, request, view):
         if request.user and request.user.is_authenticated:
             check_and_update_credit(request.user)
             if request.user.credit_point <= 40:
                 return False
+            if Blacklist.objects.filter(user=request.user, removed_at__isnull=True).exists():
+                return False
         return True
+
 
 class AuthRegisterView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -156,7 +160,11 @@ class AuthLoginView(APIView):
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
-    serializer_class = UserSerializer
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return UserAdminDetailSerializer
+        return UserSerializer
+
     filter_backends = [filters.SearchFilter]
     search_fields = ['email', 'phone', 'name', 'line_id', 'instagram']
 
@@ -805,9 +813,9 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated(), IsNotBanned()]
 
     def create(self, request, *args, **kwargs):
-        if request.user.credit_point < 60:
+        if request.user.credit_point <= 60:
             return Response(
-                {"detail": "您的信譽分數低於 60 分，限制發起（創建）新球局。"}, 
+                {"detail": "您的信譽分數低於或等於 60 分，限制發起（創建）新球局。"}, 
                 status=status.HTTP_403_FORBIDDEN
             )
         return super().create(request, *args, **kwargs)
@@ -1126,10 +1134,6 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         if Blacklist.objects.filter(user=user, removed_at__isnull=True).exists():
             return Response({"detail": "You are blacklisted from joining matches."}, status=status.HTTP_403_FORBIDDEN)
 
-        # 2. Credit check
-        if user.credit_point < 60:
-            return Response({"detail": "Your credit rating is below 60. Joining matches is disabled."}, status=status.HTTP_403_FORBIDDEN)
-
         # 3. Double booking check
         if match.participants.filter(user=user).exists():
             return Response({"detail": "You are already a participant in this match."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1274,9 +1278,11 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 user.save()
                 deducted = True
                 warning_msg = "已超過免費取消期限（活動前 24 小時），已扣除信譽分數 10 分！"
-                if user.credit_point < 60:
+                if user.credit_point <= 40:
                     Blacklist.objects.get_or_create(user=user)
-                    warning_msg += " 您的信譽分數已低於 60 分，已列入黑名單。"
+                    warning_msg += " 您的信譽分數已低於或等於 40 分，已列入黑名單並永久停權。"
+                elif user.credit_point <= 60:
+                    warning_msg += " 您的信譽分數已處於 40 至 60 分的警示區間，限制發起新球局。"
 
         with transaction.atomic():
             # Get list of current participants ordered by joined_at to determine who was waitlisted
@@ -1388,6 +1394,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         status_map = {
             'confirmed': '已佔到/已預約',
             'failed': '未佔到/未預約',
+            'pending': '未確認',
             '已佔到/已預約': '已佔到/已預約',
             '未佔到/未預約': '未佔到/未預約',
             '未確認': '未確認'
@@ -1406,6 +1413,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
 
         # 發送通知給所有參與者
         participants = match.participants.all()
+        is_free = float(match.total_price or 0) == 0
         for p in participants:
             if is_failed:
                 msg = f"【活動取消】您報名的球局「{match.game_name}」因【場地未借到】已取消。"
@@ -1415,7 +1423,13 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                     message=msg
                 )
             else:
-                msg = f"【場地狀態回報通知】您報名的球局「{match.game_name}」場地狀態已更新！\n狀態：{match.booking_status}"
+                if is_free:
+                    if mapped_status == '已佔到/已預約':
+                        msg = f"【場地確認通知】主揪已確認「{match.game_name}」現場有場地可使用，大家可以出發囉！"
+                    else:
+                        msg = f"【場地取消確認】主揪已取消「{match.game_name}」場地可使用的確認，目前場地狀態已變更為「未確認」。"
+                else:
+                    msg = f"【場地狀態回報通知】您報名的球局「{match.game_name}」場地狀態已更新！\n狀態：{match.booking_status}"
                 Notification.objects.create(
                     user=p.user,
                     match=match,
@@ -1595,14 +1609,14 @@ class ReportViewSet(viewsets.ModelViewSet):
             message=f"【檢舉處理通知】您對「{offender.name}」的檢舉（原因：{reason}）已成功提交，系統已自動對其扣除 {points_to_deduct} 分。"
         )
 
-        # 5. 60給警告與限制創房
-        if offender.credit_point < 60:
+        # 5. 60及以下給警告與限制創房
+        if 40 < offender.credit_point <= 60:
             Notification.objects.create(
                 user=offender,
-                message="【信譽警告】您的信譽分數已低於 60 分。系統已限制您發起（創建）新球局的功能，請遵守規範以恢復分數。"
+                message="【信譽警告】您的信譽分數已低於或等於 60 分。系統已限制您發起（創建）新球局的功能，請遵守規範以恢復分數。"
             )
 
-        # 6. 40永久停權 (ban forever) 並加入黑名單
+        # 6. 40及以下永久停權 (ban forever) 並加入黑名單
         if offender.credit_point <= 40:
             Blacklist.objects.get_or_create(user=offender)
             Notification.objects.create(
@@ -1647,7 +1661,7 @@ class ReportViewSet(viewsets.ModelViewSet):
                     offender.credit_point = max(0, offender.credit_point - rule.points_deducted)
                     offender.save()
 
-                    if offender.credit_point < 60:
+                    if offender.credit_point <= 40:
                         if not Blacklist.objects.filter(user=offender, removed_at__isnull=True).exists():
                             Blacklist.objects.create(
                                 user=offender
@@ -1711,37 +1725,83 @@ class AdminBroadcastViewSet(viewsets.ViewSet):
         notifications = []
 
         if target_group == 'all':
-            # 廣播給所有人 (對每一個 match 產生一條通知)
-            matches = GameMatch.objects.all()
-            for match in matches:
-                notifications.append(Notification(match=match, message=content))
+            # 廣播給所有人 (系統公告，對每個使用者產生一條通知，且無特定房資訊)
+            users = User.objects.all()
+            for u in users:
+                notifications.append(Notification(user=u, message=content))
         elif target_group == 'organizers':
-            # 廣播給所有招募中的主揪 (舊有相容)
+            # 廣播給所有招募中的主揪 (舊有相容，帶有房間資訊)
             matches = GameMatch.objects.filter(match_status='recruiting')
             for match in matches:
-                notifications.append(Notification(match=match, message=content))
+                venue_name = match.court.venue.name if (match.court and match.court.venue) else "未定場地"
+                message = (
+                    f"給【{match.game_name}】房間房主\n"
+                    f"球局資訊：\n"
+                    f"- 時間：{match.booking_date} {match.time_slot}\n"
+                    f"- 地點：{venue_name}\n\n\n"
+                    f"{content}"
+                )
+                notifications.append(Notification(user=match.creator, match=match, message=message))
         elif target_group == 'organizer':
-            # 【新功能】僅限通知該房的「房主 (Creator)」
+            # 僅限通知該房的「房主 (Creator)」
             if not game_id:
                 return Response({"detail": "game_id is required for target_group='organizer'."}, status=status.HTTP_400_BAD_REQUEST)
             from django.shortcuts import get_object_or_404 as get_or_404
             match = get_or_404(GameMatch, pk=game_id)
+            venue_name = match.court.venue.name if (match.court and match.court.venue) else "未定場地"
+            
+            clean_content = content
+            for prefix in ["【系統公告】【通知 - 房間所有人】", "【系統公告】【通知 - 房主】", "【系統公告】"]:
+                if clean_content.startswith(prefix):
+                    clean_content = clean_content[len(prefix):]
+            if clean_content.startswith("："):
+                clean_content = clean_content[1:]
+            
+            message = (
+                f"給【{match.game_name}】房間房主\n"
+                f"球局資訊：\n"
+                f"- 時間：{match.booking_date} {match.time_slot}\n"
+                f"- 地點：{venue_name}\n\n\n"
+                f"{clean_content}"
+            )
             notifications.append(Notification(
                 user=match.creator,
                 match=match,
-                message=content
+                message=message
             ))
         elif target_group == 'room_members':
-            # 【新功能】通知該房的「所有人」(包含房主與所有參加者)
+            # 通知該房的「所有人」(包含房主與所有參加者)
             if not game_id:
                 return Response({"detail": "game_id is required for target_group='room_members'."}, status=status.HTTP_400_BAD_REQUEST)
             from django.shortcuts import get_object_or_404 as get_or_404
             match = get_or_404(GameMatch, pk=game_id)
-            # user=None 代表此通知屬於 match 層級，成員都能看見
-            notifications.append(Notification(
-                match=match,
-                message=content
-            ))
+            venue_name = match.court.venue.name if (match.court and match.court.venue) else "未定場地"
+            
+            clean_content = content
+            for prefix in ["【系統公告】【通知 - 房間所有人】", "【系統公告】【通知 - 房主】", "【系統公告】"]:
+                if clean_content.startswith(prefix):
+                    clean_content = clean_content[len(prefix):]
+            if clean_content.startswith("："):
+                clean_content = clean_content[1:]
+                
+            message = (
+                f"給【{match.game_name}】房間所有人\n"
+                f"球局資訊：\n"
+                f"- 時間：{match.booking_date} {match.time_slot}\n"
+                f"- 地點：{venue_name}\n\n\n"
+                f"{clean_content}"
+            )
+            
+            users_to_notify = {match.creator}
+            for p in match.participants.all():
+                users_to_notify.add(p.user)
+                
+            for u in users_to_notify:
+                notifications.append(Notification(
+                    user=u,
+                    match=match,
+                    message=message
+                ))
         else:
             return Response({"detail": f"Invalid target_group: {target_group}"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1754,6 +1814,18 @@ class NotificationViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def list(self, request):
+        # 1. 刪除系統中所有超過 30 天的通知 (自動大掃除)
+        from django.utils import timezone
+        from datetime import timedelta
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        Notification.objects.filter(created_at__lt=thirty_days_ago).delete()
+
+        # 2. 限制當前使用者的個人通知最多存 20 個，多出的舊通知予以刪除
+        user_personal_notifs = Notification.objects.filter(user=request.user).order_by('-created_at')
+        if user_personal_notifs.count() > 20:
+            notif_ids_to_keep = list(user_personal_notifs.values_list('id', flat=True)[:20])
+            Notification.objects.filter(user=request.user).exclude(id__in=notif_ids_to_keep).delete()
+
         from django.db.models import Q
         user_matches = GameMatch.objects.filter(
             Q(creator=request.user) | Q(participants__user=request.user)
@@ -1776,7 +1848,8 @@ class NotificationViewSet(viewsets.ViewSet):
         if search_query:
             notifs = notifs.filter(message__icontains=search_query)
             
-        serializer = NotificationSerializer(notifs, many=True)
+        # 3. 嚴格限制回傳給前端的通知列表最多 20 筆
+        serializer = NotificationSerializer(notifs[:20], many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['patch'], url_path='read')
@@ -1790,6 +1863,25 @@ class NotificationViewSet(viewsets.ViewSet):
         notif = get_object_or_404(Notification, pk=pk)
         notif.delete()
         return Response({"status": "success", "message": "Notification deleted."}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['delete'], url_path='delete-all')
+    def delete_all(self, request):
+        from django.db.models import Q
+        user_matches = GameMatch.objects.filter(
+            Q(creator=request.user) | Q(participants__user=request.user)
+        ).values_list('id', flat=True)
+        fav_venue_matches = []
+        match_ids = set(list(user_matches) + list(fav_venue_matches))
+        
+        notifs = Notification.objects.filter(
+            Q(match_id__in=match_ids) | Q(match__isnull=True)
+        ).filter(
+            Q(user=request.user) | (Q(user__isnull=True) & Q(match_id__in=match_ids))
+        ).filter(is_read=True)
+        
+        count = notifs.count()
+        notifs.delete()
+        return Response({"status": "success", "message": f"{count} read notifications deleted."}, status=status.HTTP_200_OK)
 
 
 class OpenDataViewSet(viewsets.ViewSet):
@@ -1941,19 +2033,6 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return [IsAdminRole()]
 
-    def perform_create(self, serializer):
-        announcement = serializer.save()
-        # 當發布系統公告時，自動為所有使用者建立一則通知
-        users = User.objects.all()
-        notifications = [
-            Notification(
-                user=user, 
-                message=f"【系統公告】{announcement.title}\n{announcement.content}"
-            )
-            for user in users
-        ]
-        Notification.objects.bulk_create(notifications)
-
 class AdminAnalyticsView(APIView):
     permission_classes = [IsAdminRole]
 
@@ -2084,4 +2163,9 @@ def upload_image(request):
 class TaiwanRegionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = TaiwanRegion.objects.all().order_by('city', 'district')
     serializer_class = TaiwanRegionSerializer
+    permission_classes = [permissions.AllowAny]
+
+class FeedbackTypeViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = FeedbackType.objects.all().order_by('id')
+    serializer_class = FeedbackTypeSerializer
     permission_classes = [permissions.AllowAny]
