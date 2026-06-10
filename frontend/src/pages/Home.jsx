@@ -693,7 +693,9 @@ function Home() {
               .filter(party => selectedFilterRegion === 'all' || (party.location && party.location.includes(selectedFilterRegion)))
               .filter(party => selectedFilterDistrict === 'all' || (party.location && party.location.includes(selectedFilterDistrict)))
               .filter(party => selectedCategory === '全部' || party.type === selectedCategory)
-              const getPriority = (party) => {
+              .sort((a, b) => {
+                const currentUserId = localStorage.getItem('user_id');
+                const getPriority = (party) => {
                 const isHost = currentUserId && (
                   (party.creator_id && String(party.creator_id) === String(currentUserId)) || 
                   (party.participants?.[0]?.id && String(party.participants[0].id) === String(currentUserId)) || 
