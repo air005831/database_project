@@ -620,9 +620,9 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">性別限制</label>
                     <div style={{ display: 'flex', gap: '12px' }}>
-                      <button type="button" className={`role-btn ${newParty.genderLimit === '不限' ? 'active' : ''}`} style={{ flex: 1, border: '1px solid #e2e8f0', padding: '8px' }} onClick={() => setNewParty({...newParty, genderLimit: '不限'})}>不限</button>
-                      <button type="button" className={`role-btn ${newParty.genderLimit === '限男' ? 'active' : ''}`} style={{ flex: 1, border: '1px solid #e2e8f0', padding: '8px' }} onClick={() => setNewParty({...newParty, genderLimit: '限男'})}>限男</button>
-                      <button type="button" className={`role-btn ${newParty.genderLimit === '限女' ? 'active' : ''}`} style={{ flex: 1, border: '1px solid #e2e8f0', padding: '8px' }} onClick={() => setNewParty({...newParty, genderLimit: '限女'})}>限女</button>
+                      <button type="button" className={`gender-btn ${newParty.genderLimit === '不限' ? 'active' : ''}`} onClick={() => setNewParty({...newParty, genderLimit: '不限'})}>不限</button>
+                      <button type="button" className={`gender-btn ${newParty.genderLimit === '限男' ? 'active' : ''}`} onClick={() => setNewParty({...newParty, genderLimit: '限男'})}>限男</button>
+                      <button type="button" className={`gender-btn ${newParty.genderLimit === '限女' ? 'active' : ''}`} onClick={() => setNewParty({...newParty, genderLimit: '限女'})}>限女</button>
                     </div>
                   </div>
                   <div className="form-group">
