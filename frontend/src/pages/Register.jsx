@@ -55,12 +55,22 @@ function Register() {
       // 解析後端錯誤訊息
       const errData = error.response?.data;
       if (errData) {
-        const msg = errData.detail
+        let msg = errData.detail
           || errData.email?.[0]
           || errData.name?.[0]
           || errData.password?.[0]
           || Object.values(errData).flat().join('、')
           || '註冊失敗，請稍後再試。';
+        
+        // 將特定的英文錯誤翻譯為友善的中文提示
+        if (msg === 'Email already exists.') {
+          msg = '此電子信箱已被註冊使用！';
+        } else if (msg === 'Invalid email format.') {
+          msg = '電子信箱格式錯誤！';
+        } else if (msg === 'name, email and password are required.') {
+          msg = '暱稱、電子信箱與密碼皆為必填！';
+        }
+        
         setRegisterError(msg);
       } else {
         setRegisterError('無法連線至伺服器，請確認網路狀態後再試。');

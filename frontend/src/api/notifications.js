@@ -25,6 +25,14 @@ const notificationsApi = {
    */
   deleteNotification: (notificationId) => {
     return axiosClient.delete(`/notifications/${notificationId}`);
+  },
+
+  /**
+   * 一鍵刪除所有通知
+   * @returns {Promise}
+   */
+  deleteAllNotifications: () => {
+    return axiosClient.delete('/notifications/delete-all');
   }
 };
 

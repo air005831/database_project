@@ -3,7 +3,7 @@ from .models import (
     User, Sport, UserSportLevel, Address, Facility, Venue, Court, 
     CourtConflict, GameMatch, MatchParticipant,
     FavoriteGame, PenaltyRule, Report, Blacklist,
-    Notification, Feedback, Announcement
+    Notification, Feedback, Announcement, TaiwanRegion, FeedbackType
 )
 
 @admin.register(Feedback)
@@ -20,11 +20,11 @@ class AnnouncementAdmin(admin.ModelAdmin):
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    list_display = ('phone', 'name', 'birthday', 'credit_point', 'role')
+    list_display = ('phone', 'email', 'name', 'gender', 'birthday', 'credit_point', 'role')
     list_filter = ('role',)
-    search_fields = ('phone', 'name')
+    search_fields = ('phone', 'email', 'name')
     ordering = ('phone',)
-    fields = ('phone', 'name', 'password', 'birthday', 'role', 'credit_point')
+    fields = ('phone', 'email', 'name', 'password', 'gender', 'birthday', 'role', 'credit_point', 'avatar_url', 'bio', 'line_id', 'instagram')
 
 @admin.register(Sport)
 class SportAdmin(admin.ModelAdmin):
@@ -96,3 +96,15 @@ class BlacklistAdmin(admin.ModelAdmin):
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ('match', 'message', 'is_read', 'created_at')
     list_filter = ('is_read', 'created_at')
+
+@admin.register(TaiwanRegion)
+class TaiwanRegionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'city', 'district')
+    list_filter = ('city',)
+    search_fields = ('city', 'district')
+
+@admin.register(FeedbackType)
+class FeedbackTypeAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name')
+    search_fields = ('name',)
+

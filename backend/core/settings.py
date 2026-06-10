@@ -86,7 +86,7 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 import socket
 
-def check_mysql_availability(host='26.232.235.50', port=3306, timeout=1.0):
+def check_mysql_availability(host='localhost', port=3306, timeout=1.0):
     """
     Check if MySQL driver is installed and if the port is open.
     """
@@ -100,7 +100,7 @@ def check_mysql_availability(host='26.232.235.50', port=3306, timeout=1.0):
         try:
             # 如果沒有 mysqlclient，嘗試使用 pymysql 並偽裝成 MySQLdb
             import pymysql
-            pymysql.version_info = (2, 2, 8, 'final', 0) # 欺騙 Django 的版本檢查
+            # pymysql.version_info = (2, 2, 8, 'final', 0) # 欺騙 Django 的版本檢查
             pymysql.install_as_MySQLdb()
             mysql_driver_installed = True
         except ImportError:

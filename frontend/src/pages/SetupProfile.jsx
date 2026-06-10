@@ -65,7 +65,17 @@ function SetupProfile() {
       navigate('/home');
     } catch (error) {
       console.error('Setup profile error:', error);
-      alert('檔案設定失敗，請稍後再試！');
+      let errorMsg = '檔案設定失敗，請稍後再試！';
+      if (error.response && error.response.data) {
+        const data = error.response.data;
+        if (data.duplicates) {
+          const dupMsgs = Object.values(data.duplicates).join('\n');
+          errorMsg = `設定失敗：\n${dupMsgs}`;
+        } else if (data.detail) {
+          errorMsg = `設定失敗：${data.detail}`;
+        }
+      }
+      alert(errorMsg);
     } finally {
       setIsLoading(false);
     }
@@ -105,7 +115,7 @@ function SetupProfile() {
                 </div>
               ))}
             </div>
-            <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '12px' }}>點選上方預設頭貼或稍後在個人頁面上傳照片</p>
+            <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '12px' }}>請選擇上方頭像</p>
           </div>
 
           <div style={{ marginBottom: '24px' }}>
