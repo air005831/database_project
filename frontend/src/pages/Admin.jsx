@@ -3389,21 +3389,5 @@ function Admin() {
   );
 }
 
-
 export default Admin;
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '12px', marginTop: '28px' }}>
-                <button type="button" className="btn-outline" style={{ flex: 1, padding: '12px', borderRadius: '12px' }} onClick={() => setEditingAnnouncement(null)}>取消</button>
-                <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', borderRadius: '12px' }}>儲存修改</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
-
-export default Admin;
