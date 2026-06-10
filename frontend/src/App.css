@@ -661,6 +661,42 @@
 }
 
 /* --- Admin 頁面樣式 --- */
+.admin-layout {
+  display: flex;
+  min-height: 100vh;
+  background-color: #f8fafc;
+}
+
+.admin-sidebar {
+  width: 260px;
+  background-color: #1e293b;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: transform 0.3s ease, left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-header {
+  padding: 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+
+.sidebar-logo {
+  font-size: 20px;
+  font-weight: 800;
+  color: #7995a5;
+  letter-spacing: -0.5px;
+}
+
+.sidebar-nav {
+  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .admin-nav-btn {
   display: flex;
   align-items: center;
@@ -688,7 +724,40 @@
   color: white;
 }
 
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  margin-bottom: 24px;
+}
+
+.admin-table th {
+  background-color: #f8fafc;
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.admin-table td {
+  padding: 12px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
 .stat-card {
+  background-color: white;
+  padding: 24px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  font-weight: 700;
+  font-size: 16px;
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
@@ -699,6 +768,46 @@
 
 .admin-content {
   animation: fadeIn 0.3s ease;
+}
+
+/* 會員管理 */
+.um-container {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 24px;
+  background-color: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  height: calc(100vh - 160px);
+}
+
+.user-list {
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  background-color: #f8fafc;
+}
+
+.user-item {
+  padding: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.user-item:hover {
+  background-color: #f1f5f9;
+}
+
+.user-item.active {
+  background-color: white;
+  border-left: 4px solid var(--primary-color);
+}
+
+.user-detail {
+  padding: 32px;
+  overflow-y: auto;
 }
 
 @keyframes fadeIn {
@@ -848,6 +957,17 @@
 
 .party-card.hosted-party:hover {
   box-shadow: 0 10px 25px rgba(229, 205, 205, 0.6);
+}
+
+/* --- Joined Party Styles --- */
+.party-card.joined-party {
+  background-color: #ecf3f7; /* 莫蘭迪淺藍 */
+  border-color: #cde0e5; /* 莫蘭迪深藍邊框 */
+  box-shadow: 0 4px 15px rgba(205, 224, 229, 0.4);
+}
+
+.party-card.joined-party:hover {
+  box-shadow: 0 10px 25px rgba(205, 224, 229, 0.6);
 }
 
 /* --- Party Detail Layout Styles --- */
@@ -1088,10 +1208,6 @@
 }
 
 /* --- Admin Responsive Styles --- */
-.admin-sidebar {
-  transition: transform 0.3s ease, left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
 .admin-mobile-header {
   display: none;
 }
@@ -1121,7 +1237,7 @@
   width: 100%;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 768px) {
   .admin-container {
     flex-direction: column;
   }
