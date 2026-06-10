@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CloudSun, MapPin, Clock, Bell, HelpCircle, Star } from 'lucide-react';
+import { CloudSun, MapPin, Clock, Bell, HelpCircle, Star, AlertTriangle, CheckCircle2, CalendarX } from 'lucide-react';
 import gamesApi from '../api/games';
 import notificationsApi from '../api/notifications';
 import weatherApi from '../api/weather';
@@ -27,6 +27,16 @@ function Home() {
   const [weatherLocation, setWeatherLocation] = useState('桃園市');
   const [isPageLoading, setIsPageLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
+  const [alertData, setAlertData] = useState({ show: false, msg: '', type: 'error' });
+  const showAlert = (msg, type = 'error') => {
+    setAlertData({ show: true, msg, type });
+    if (type === 'success') {
+      setTimeout(() => {
+        setAlertData(prev => prev.show && prev.msg === msg ? { ...prev, show: false } : prev);
+      }, 1500);
+    }
+  };
+  const closeAlert = () => setAlertData({ ...alertData, show: false });
 
   // 動態場地資料狀態
   const [allVenues, setAllVenues] = useState([]); // [{id, name, city, dist, sports, facilities}]
@@ -271,19 +281,19 @@ function Home() {
   });
 
   const handleLogout = () => {
-    navigate('/');
+    navigate('/login');
   };
 
   const handleSendFeedback = async (e) => {
     e.preventDefault();
     try {
       await adminApi.submitFeedback(feedback);
-      alert('感謝您的回饋！管理員將會盡快查看。');
+      showAlert('感謝您的回饋！管理員將會盡快查看。');
       setIsFeedbackOpen(false);
       setFeedback({ type: '建議', content: '' });
     } catch (error) {
       console.error('Feedback error:', error);
-      alert('送出失敗，請稍後再試。');
+      showAlert('送出失敗，請稍後再試。');
     }
   };
 
@@ -296,7 +306,7 @@ function Home() {
         (newParty.genderLimit === '限男' && userGender !== '男') ||
         (newParty.genderLimit === '限女' && userGender !== '女')
       ) {
-        alert(`主揪性別為「${userGender}」，無法發起「${newParty.genderLimit}」的揪團！`);
+        showAlert(`主揪性別為「${userGender}」，無法發起「${newParty.genderLimit}」的揪團！`);
         return;
       }
     }
@@ -307,7 +317,7 @@ function Home() {
     const requiredRank = { '高手': 3, '業餘': 2, '休閒': 1 };
 
     if (rankValue[userLevelInSport] < requiredRank[newParty.level]) {
-      alert(`你的${newParty.type}程度為 ${userLevelInSport}，無法發起${newParty.level}喔！`);
+      showAlert(`你的${newParty.type}程度為 ${userLevelInSport}，無法發起${newParty.level}喔！`);
       return;
     }
 
@@ -323,6 +333,10 @@ function Home() {
 
     // 計算時間
     const dateObj = new Date(newParty.time);
+    if (dateObj < new Date()) {
+      showAlert('球局時間不能早於現在時間！');
+      return;
+    }
     const booking_date = dateObj.toISOString().split('T')[0]; // "YYYY-MM-DD"
     const startHour = dateObj.getHours().toString().padStart(2, '0');
     const startMin = dateObj.getMinutes().toString().padStart(2, '0');
@@ -381,11 +395,11 @@ function Home() {
       setNewParty({ 
         title: '', type: '籃球', level: '休閒', genderLimit: '不限', city: '桃園市', district: '桃園區', venue: '桃園國民運動中心', description: '', price: '', time: '', duration: '2 小時', minPlayers: 2, maxPlayers: 4 
       });
-      alert('發起成功！');
+      showAlert('發起成功！', 'success');
     } catch (error) {
       console.error('Create party error:', error);
       const backendError = error.response?.data ? JSON.stringify(error.response.data) : '伺服器未回應';
-      alert(`發起揪團失敗：${backendError}`);
+      showAlert(`發起揪團失敗：${backendError}`);
     }
   };
 
@@ -572,7 +586,12 @@ function Home() {
             
             {/* 通知中心下拉選單 */}
             {showNotifications && (
-              <div className="notification-dropdown">
+              <>
+                <div 
+                  style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} 
+                  onClick={() => setShowNotifications(false)}
+                ></div>
+                <div className="notification-dropdown">
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', fontWeight: '700', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   通知中心
                   <span 
@@ -661,7 +680,7 @@ function Home() {
                                   setNotifications(notifications.filter(item => item.id !== n.id));
                                 } catch (err) {
                                   console.error('Failed to delete notification', err);
-                                  alert('刪除通知失敗，請稍後再試。');
+                                  showAlert('刪除通知失敗，請稍後再試。');
                                 }
                               }
                             }}
@@ -690,6 +709,7 @@ function Home() {
                   )}
                 </div>
               </div>
+              </>
             )}
           </div>
 
@@ -803,32 +823,51 @@ function Home() {
         </div>
         {/* 卡片列表 */}
         <div className="party-grid">
-          {parties
-            .filter(party => selectedFilterRegion === 'all' || (party.location && party.location.includes(selectedFilterRegion)))
-            .filter(party => selectedFilterDistrict === 'all' || (party.location && party.location.includes(selectedFilterDistrict)))
-            .filter(party => selectedCategory === '全部' || party.type === selectedCategory)
-            .sort((a, b) => {
+          {(() => {
+            const filteredParties = parties
+              .filter(party => selectedFilterRegion === 'all' || (party.location && party.location.includes(selectedFilterRegion)))
+              .filter(party => selectedFilterDistrict === 'all' || (party.location && party.location.includes(selectedFilterDistrict)))
+              .filter(party => selectedCategory === '全部' || party.type === selectedCategory)
+              .sort((a, b) => {
               const currentUserId = localStorage.getItem('user_id');
-              const isAHost = currentUserId && (
-                (a.creator_id && String(a.creator_id) === String(currentUserId)) || 
-                (a.participants?.[0]?.id && String(a.participants[0].id) === String(currentUserId)) || 
-                a.participants?.[0] === '我 (主揪)' || 
-                a.participants?.[0] === '主揪人' ||
-                (a.user_id && String(a.user_id) === String(currentUserId))
-              );
-              const isBHost = currentUserId && (
-                (b.creator_id && String(b.creator_id) === String(currentUserId)) || 
-                (b.participants?.[0]?.id && String(b.participants[0].id) === String(currentUserId)) || 
-                b.participants?.[0] === '我 (主揪)' || 
-                b.participants?.[0] === '主揪人' ||
-                (b.user_id && String(b.user_id) === String(currentUserId))
-              );
+              
+              const getPriority = (party) => {
+                const isHost = currentUserId && (
+                  (party.creator_id && String(party.creator_id) === String(currentUserId)) || 
+                  (party.participants?.[0]?.id && String(party.participants[0].id) === String(currentUserId)) || 
+                  party.participants?.[0] === '我 (主揪)' || 
+                  party.participants?.[0] === '主揪人' ||
+                  (party.user_id && String(party.user_id) === String(currentUserId))
+                );
+                if (isHost) return 1;
+                
+                const isParticipant = currentUserId && (
+                  party.participants?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
+                  party.participant_ids?.some(id => String(id) === String(currentUserId))
+                );
+                const isWaitlisted = currentUserId && (
+                  party.waitlist?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
+                  party.waitlist_ids?.some(id => String(id) === String(currentUserId))
+                );
+                if (isParticipant || isWaitlisted) return 2;
+                
+                return 3;
+              };
 
-              if (isAHost && !isBHost) return -1;
-              if (!isAHost && isBHost) return 1;
-              return 0;
-            })
-            .map(party => {
+              return getPriority(a) - getPriority(b);
+            });
+
+            if (filteredParties.length === 0) {
+              return (
+                <div style={{ padding: '60px 20px', textAlign: 'center', gridColumn: '1 / -1', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
+                  <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}><CalendarX size={48} color="#94a3b8" strokeWidth={1.5} /></div>
+                  <h3 style={{ color: '#475569', margin: '0 0 8px 0', fontSize: '18px', fontWeight: 'bold' }}>暫無球局，換你來揪吧！</h3>
+                  <p style={{ color: '#94a3b8', margin: 0, fontSize: '14px' }}>目前這個分類還沒有人發起揪團，點擊右下角發起第一場吧</p>
+                </div>
+              );
+            }
+
+            return filteredParties.map(party => {
             const currentUserId = localStorage.getItem('user_id');
             const isHost = currentUserId && (
               (party.creator_id && String(party.creator_id) === String(currentUserId)) || 
@@ -898,7 +937,7 @@ function Home() {
             }
 
             return (
-              <div key={party.id} className={`party-card clickable-card ${isHost ? 'hosted-party' : ''}`} onClick={() => navigate(`/party/${party.id}`, { state: { party } })}>
+              <div key={party.id} className={`party-card clickable-card ${isHost ? 'hosted-party' : (isParticipant || isWaitlisted) ? 'joined-party' : ''}`} onClick={() => navigate(`/party/${party.id}`, { state: { party } })}>
                 <div className="party-card-header">
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     {isHost && (
@@ -949,7 +988,8 @@ function Home() {
                 </div>
               </div>
             );
-          })}
+          });
+          })()}
         </div>
       </main>
 
@@ -957,7 +997,7 @@ function Home() {
       <div className="fab-container">
         <button className="fab-btn" onClick={() => {
           if (reputationScore <= 60) {
-            alert(`⚠️ 你的信譽分數過低（目前：${reputationScore}分），已遭到警告，目前無法發起新揪團。請保持良好參與紀錄以恢復信譽。`);
+            showAlert(`⚠️ 你的信譽分數過低（目前：${reputationScore}分），已遭到警告，目前無法發起新揪團。請保持良好參與紀錄以恢復信譽。`);
             return;
           }
           setIsModalOpen(true);
@@ -1037,7 +1077,7 @@ function Home() {
                       className="form-input custom-date-input" 
                       value={newParty.time} 
                       onChange={e => setNewParty({...newParty, time: e.target.value})} 
-                      min={new Date().toISOString().slice(0, 16)}
+                      min={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
                       required 
                     />
                   </div>
@@ -1201,8 +1241,30 @@ function Home() {
           </div>
         </div>
       )}
+
+      {alertData.show && (
+        <div className="modal-overlay" onClick={closeAlert} style={{ zIndex: 99999 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '350px', textAlign: 'center', padding: '32px', borderRadius: '20px' }}>
+            <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: alertData.type === 'success' ? '#dcfce3' : '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              {alertData.type === 'success' ? <CheckCircle2 size={32} color="#22c55e" /> : <AlertTriangle size={32} color="#ef4444" />}
+            </div>
+            {alertData.type !== 'success' && <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '12px', color: '#1e293b' }}>提示</h3>}
+            <p style={{ fontSize: '16px', color: '#475569', marginBottom: alertData.type === 'success' ? '0' : '24px', lineHeight: '1.5' }}>{alertData.msg}</p>
+            {alertData.type !== 'success' && (
+              <button 
+                className="btn-primary" 
+                onClick={closeAlert}
+                style={{ width: '100%', padding: '12px', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold' }}
+              >
+                我知道了
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default Home;
+

@@ -10,13 +10,14 @@ function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [passwordError, setPasswordError] = useState('');
+  const [modal, setModal] = useState({ show: false, message: '', title: '', type: 'error', onConfirm: null });
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      alert('請輸入有效的電子郵件格式！');
+      setModal({ show: true, title: '格式錯誤', message: '請輸入有效的電子郵件格式！', type: 'error' });
       return;
     }
     if (password.length < 6) {
@@ -26,7 +27,7 @@ function Register() {
       setPasswordError('');
     }
     if (password !== confirmPassword) {
-      alert('兩次密碼輸入不一致喔！');
+      setModal({ show: true, title: '密碼不一致', message: '兩次密碼輸入不一致喔！', type: 'error' });
       return;
     }
 
@@ -48,11 +49,19 @@ function Register() {
         localStorage.setItem('role', response.role);
       }
       
-      alert('註冊成功！請繼續完成個人檔案設定。');
-      navigate('/setup-profile');
+      setModal({ 
+        show: true, 
+        title: '註冊成功 🎉', 
+        message: '歡迎加入不揪ㄛ！請繼續完成個人檔案設定。', 
+        type: 'success'
+      });
+      setTimeout(() => {
+        setModal(prev => ({ ...prev, show: false }));
+        navigate('/setup-profile');
+      }, 2000);
     } catch (error) {
       console.error('Register error:', error);
-      alert('註冊失敗，請確認信箱是否已被使用或伺服器狀態！');
+      setModal({ show: true, title: '註冊失敗', message: '請確認信箱是否已被使用或伺服器狀態！', type: 'error' });
     } finally {
       setIsLoading(false);
     }
@@ -133,6 +142,55 @@ function Register() {
           <Link to="/">返回登入</Link>
         </div>
       </div>
+
+      {modal.show && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div style={{
+            backgroundColor: '#fff', borderRadius: '16px', padding: '32px',
+            width: '90%', maxWidth: '360px', textAlign: 'center',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            transform: 'scale(1)', animation: 'popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+          }}>
+            <div style={{
+              width: '48px', height: '48px', borderRadius: '50%', margin: '0 auto 16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              backgroundColor: modal.type === 'success' ? '#dcfce7' : '#fee2e2',
+              color: modal.type === 'success' ? '#16a34a' : '#ef4444'
+            }}>
+              {modal.type === 'success' ? (
+                <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              ) : (
+                <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              )}
+            </div>
+            <h3 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: '700', color: '#1e293b' }}>{modal.title}</h3>
+            <p style={{ margin: '0 0 24px', color: '#64748b', fontSize: '15px', lineHeight: '1.5' }}>{modal.message}</p>
+            {modal.type !== 'success' && (
+              <button
+                onClick={() => {
+                  setModal({ ...modal, show: false });
+                  if (modal.onConfirm) modal.onConfirm();
+                }}
+                style={{
+                  width: '100%', padding: '12px', borderRadius: '8px', border: 'none',
+                  backgroundColor: '#ef4444',
+                  color: 'white', fontWeight: '600', fontSize: '15px', cursor: 'pointer',
+                  transition: 'opacity 0.2s'
+                }}
+                onMouseOver={(e) => e.target.style.opacity = 0.9}
+                onMouseOut={(e) => e.target.style.opacity = 1}
+              >
+                我知道了
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

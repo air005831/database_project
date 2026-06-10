@@ -50,7 +50,7 @@ function Login() {
     <div className="login-container">
       <div className="login-card">
         <div className="login-header">
-          <h1 className="login-title">不揪ㄛ</h1>
+          <h1 className="login-title" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>不揪ㄛ</h1>
           <p className="login-subtitle">尋找你的球友與牌咖，隨時開局！</p>
         </div>
         

@@ -213,11 +213,13 @@ class MatchParticipantUserSerializer(serializers.ModelSerializer):
     phone = serializers.ReadOnlyField(source='user.phone')
     name = serializers.ReadOnlyField(source='user.name')
     age = serializers.ReadOnlyField(source='user.age')
+    gender = serializers.ReadOnlyField(source='user.gender')
+    avatar = serializers.ReadOnlyField(source='user.avatar_url')
     level = serializers.SerializerMethodField()
 
     class Meta:
         model = MatchParticipant
-        fields = ('id', 'phone', 'name', 'age', 'level')
+        fields = ('id', 'phone', 'name', 'age', 'gender', 'avatar', 'level')
 
     def get_level(self, obj):
         user = obj.user

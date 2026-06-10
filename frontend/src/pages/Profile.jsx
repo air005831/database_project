@@ -1,14 +1,30 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Cake, MapPin, Clock, Phone, Camera, HelpCircle, X, Star } from 'lucide-react';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { Cake, MapPin, Clock, Phone, Camera, HelpCircle, X, Star, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import usersApi from '../api/users';
 import gamesApi from '../api/games';
 import '../App.css';
 
 function Profile() {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const location = useLocation();
+  const currentUserId = localStorage.getItem('user_id');
+  const isOwnProfile = !id || String(id) === String(currentUserId);
   const fileInputRef = useRef(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [alertData, setAlertData] = useState({ show: false, msg: '', type: 'error' });
+  
+  const showAlert = (msg, type = 'error') => {
+    setAlertData({ show: true, msg, type });
+    if (type === 'success') {
+      setTimeout(() => {
+        setAlertData(prev => prev.show && prev.msg === msg ? { ...prev, show: false } : prev);
+      }, 1500);
+    }
+  };
+  const closeAlert = () => setAlertData(prev => ({ ...prev, show: false }));
+  const [originalUserInfo, setOriginalUserInfo] = useState(null);
   const [showLevelHelp, setShowLevelHelp] = useState(false);
   const [userInfo, setUserInfo] = useState({
     nickname: '',
@@ -33,7 +49,29 @@ function Profile() {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const data = await usersApi.getUserProfile();
+        let data;
+        if (isOwnProfile) {
+          data = await usersApi.getUserProfile();
+        } else {
+          try {
+            data = await usersApi.getPublicProfile(id);
+          } catch (err) {
+            // 如果找不到真實使用者，且有從上一頁傳來的假資料，則使用假資料
+            if (err.response?.status === 404 && location.state?.mockUser) {
+              const mock = location.state.mockUser;
+              data = {
+                name: mock.name,
+                phone: mock.phone,
+                line_id: mock.line,
+                bio: '這是一位來自預設資料的測試使用者。',
+                levels: { "綜合": mock.level },
+                role: 'user'
+              };
+            } else {
+              throw err;
+            }
+          }
+        }
         // 根據 API 規格書，資料是直接放在 data 物件中，而不是 data.user
         setUserInfo({
           nickname: data.name || '',
@@ -49,7 +87,7 @@ function Profile() {
           avatar: data.avatar_url || data.avatar || '',
           role: data.role || ''
         });
-        if (data.role) {
+        if (isOwnProfile && data.role) {
           localStorage.setItem('role', data.role);
         }
         
@@ -95,8 +133,9 @@ function Profile() {
           };
         };
 
-        // Fetch Ongoing Games
-        try {
+        if (isOwnProfile) {
+          // Fetch Ongoing Games
+          try {
           const gamesData = await gamesApi.getGames();
           const rawGames = Array.isArray(gamesData.results) ? gamesData.results : (Array.isArray(gamesData) ? gamesData : []);
           
@@ -118,6 +157,7 @@ function Profile() {
         } catch (e) {
           console.error('Failed to fetch history games:', e);
         }
+        } // end of if (isOwnProfile)
 
       } catch (error) {
         console.error('Fetch profile error:', error);
@@ -140,13 +180,25 @@ function Profile() {
     'https://api.dicebear.com/9.x/adventurer/svg?seed=Willow',
   ];
 
+  const handleEditClick = () => {
+    setOriginalUserInfo({ ...userInfo, levels: { ...userInfo.levels } });
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    if (originalUserInfo) {
+      setUserInfo(originalUserInfo);
+    }
+    setIsEditing(false);
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     
     // 手機號碼格式驗證
     const phoneRegex = /^09\d{8}$/;
     if (!phoneRegex.test(userInfo.phone)) {
-      alert('請輸入正確的手機號碼格式 (例如: 0912345678)！');
+      showAlert('請輸入正確的手機號碼格式 (例如: 0912345678)！', 'error');
       return;
     }
 
@@ -163,10 +215,10 @@ function Profile() {
         levels: userInfo.levels
       });
       setIsEditing(false);
-      alert('個人資料已更新！');
+      showAlert('個人資料已更新！', 'success');
     } catch (error) {
       console.error('Update profile error:', error);
-      alert('更新失敗，請稍後再試！');
+      showAlert('更新失敗，請稍後再試！', 'error');
     }
   };
 
@@ -204,7 +256,7 @@ function Profile() {
       <nav className="navbar">
         <div className="navbar-logo" style={{ cursor: 'pointer' }} onClick={() => navigate('/home')}>不揪ㄛ</div>
         <div className="navbar-actions" style={{ display: 'flex', gap: '10px' }}>
-          {userInfo.role === 'admin' && (
+          {localStorage.getItem('role') === 'admin' && (
             <button 
               className="btn-primary" 
               style={{ backgroundColor: '#475569', border: 'none' }} 
@@ -230,10 +282,10 @@ function Profile() {
                   {userInfo.avatar ? (
                     <img src={userInfo.avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
-                    userInfo.nickname.charAt(0)
+                    (userInfo.nickname || '?').charAt(0)
                   )}
                 </div>
-                {isEditing && (
+                {isOwnProfile && isEditing && (
                   <button 
                     onClick={() => fileInputRef.current.click()}
                     style={{ position: 'absolute', bottom: 0, right: 0, backgroundColor: '#7995a5', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'white', cursor: 'pointer', boxShadow: '0 2px 5px rgba(0,0,0,0.2)' }}
@@ -274,14 +326,14 @@ function Profile() {
               
               {!isEditing ? (
                 <>
-                  <h2 className="profile-name">{userInfo.nickname}</h2>
+                  <h2 className="profile-name">{userInfo.nickname || '未命名使用者'}</h2>
                   <p className="profile-email">{userInfo.email}</p>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
                     <p className="profile-email" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Cake size={16} /> {userInfo.birthday} ({userInfo.gender})
+                      <Cake size={16} /> {userInfo.birthday || '未提供生日'} ({userInfo.gender || '未提供性別'})
                     </p>
                     <p className="profile-email" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Phone size={16} /> {userInfo.phone}
+                      <Phone size={16} /> {userInfo.phone || '未提供電話'}
                     </p>
                     {userInfo.line && (
                       <p className="profile-email" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -293,9 +345,7 @@ function Profile() {
                         <span style={{ fontWeight: 'bold' }}>IG:</span> {userInfo.ig}
                       </p>
                     )}
-                    <p className="profile-email" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <MapPin size={16} /> {userInfo.region}
-                    </p>
+
                   </div>
                   
                   <div style={{ marginBottom: '24px', textAlign: 'left' }}>
@@ -316,7 +366,9 @@ function Profile() {
                     </div>
                   </div>
 
-                  <p className="profile-bio">{userInfo.bio}</p>
+                  <p className="profile-bio" style={{ color: userInfo.bio ? 'inherit' : '#94a3b8' }}>
+                    {userInfo.bio || '這個人很神秘，還沒有寫下任何簡介。'}
+                  </p>
                   
                   <div className="reputation-box">
                     <div className="reputation-title">信譽積分</div>
@@ -324,11 +376,13 @@ function Profile() {
                     <p className="reputation-desc">{reputation.label}</p>
                   </div>
 
-                  <button className="btn-outline" style={{ width: '100%', marginTop: '20px' }} onClick={() => setIsEditing(true)}>
-                    編輯個人資料
-                  </button>
+                  {isOwnProfile && (
+                    <button className="btn-outline" style={{ width: '100%', marginTop: '20px' }} onClick={handleEditClick}>
+                      編輯個人資料
+                    </button>
+                  )}
                   
-                  {userInfo.role === 'admin' && (
+                  {isOwnProfile && userInfo.role === 'admin' && (
                     <button 
                       className="btn-primary" 
                       style={{ width: '100%', marginTop: '10px', backgroundColor: '#475569', border: 'none' }} 
@@ -345,19 +399,12 @@ function Profile() {
                     <input type="text" className="form-input" value={userInfo.nickname} onChange={e => setUserInfo({...userInfo, nickname: e.target.value})} required />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">生日 (不可修改)</label>
+                    <label className="form-label">生日</label>
                     <input type="date" className="form-input" value={userInfo.birthday} readOnly style={{ backgroundColor: '#f1f5f9', color: '#94a3b8', cursor: 'not-allowed' }} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">性別</label>
-                    <div style={{ display: 'flex', gap: '16px', marginTop: '8px' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        <input type="radio" name="gender" value="男" checked={userInfo.gender === '男'} onChange={(e) => setUserInfo({...userInfo, gender: e.target.value})} /> 男
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        <input type="radio" name="gender" value="女" checked={userInfo.gender === '女'} onChange={(e) => setUserInfo({...userInfo, gender: e.target.value})} /> 女
-                      </label>
-                    </div>
+                    <input type="text" className="form-input" value={userInfo.gender} readOnly style={{ backgroundColor: '#f1f5f9', color: '#94a3b8', cursor: 'not-allowed' }} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">聯絡電話</label>
@@ -399,20 +446,13 @@ function Profile() {
                     </div>
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label">常駐地區</label>
-                    <select className="form-input" value={userInfo.region} onChange={e => setUserInfo({...userInfo, region: e.target.value})}>
-                      <option value="桃園市">桃園市</option>
-                      <option value="台北市">台北市</option>
-                      <option value="新北市">新北市</option>
-                    </select>
-                  </div>
+
                   <div className="form-group">
                     <label className="form-label">個人簡介</label>
                     <textarea className="form-input" rows="3" value={userInfo.bio} onChange={e => setUserInfo({...userInfo, bio: e.target.value})}></textarea>
                   </div>
                   <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                    <button type="button" className="btn-outline" style={{ flex: 1 }} onClick={() => setIsEditing(false)}>取消</button>
+                    <button type="button" className="btn-outline" style={{ flex: 1 }} onClick={handleCancelEdit}>取消</button>
                     <button type="submit" className="btn-primary" style={{ flex: 1 }}>儲存</button>
                   </div>
                 </form>
@@ -421,8 +461,9 @@ function Profile() {
           </div>
 
           {/* 右側：揪團紀錄 */}
-          <div className="profile-content">
-            <div className="content-header" style={{ borderBottom: '1px solid #e2e8f0', marginBottom: '20px', paddingBottom: '10px' }}>
+          {isOwnProfile ? (
+            <div className="profile-content">
+              <div className="content-header" style={{ borderBottom: '1px solid #e2e8f0', marginBottom: '20px', paddingBottom: '10px' }}>
               <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
                 <h2 
                   onClick={() => setActiveTab('ongoing')}
@@ -540,6 +581,15 @@ function Profile() {
               )}
             </div>
           </div>
+          ) : (
+            <div className="profile-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', borderRadius: '16px' }}>
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <Star size={48} color="#94a3b8" style={{ marginBottom: '16px', opacity: 0.5 }} />
+                <h3 style={{ color: '#475569', marginBottom: '8px' }}>這是使用者的公開資料</h3>
+                <p style={{ color: '#94a3b8', fontSize: '15px' }}>為保護隱私，揪團歷史紀錄僅限本人查看</p>
+              </div>
+            </div>
+          )}
         </div>
       </main>
 
@@ -598,6 +648,26 @@ function Profile() {
             </div>
             
             <button className="login-button" style={{ marginTop: '32px' }} onClick={() => setShowLevelHelp(false)}>我瞭解了</button>
+          </div>
+        </div>
+      )}
+      {alertData.show && (
+        <div className="modal-overlay" onClick={closeAlert} style={{ zIndex: 99999 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '350px', textAlign: 'center', padding: '32px', borderRadius: '20px' }}>
+            <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: alertData.type === 'success' ? '#dcfce3' : '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              {alertData.type === 'success' ? <CheckCircle2 size={32} color="#22c55e" /> : <AlertTriangle size={32} color="#ef4444" />}
+            </div>
+            {alertData.type !== 'success' && <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '12px', color: '#1e293b' }}>提示</h3>}
+            <p style={{ fontSize: '16px', color: '#475569', marginBottom: alertData.type === 'success' ? '0' : '24px', lineHeight: '1.5' }}>{alertData.msg}</p>
+            {alertData.type !== 'success' && (
+              <button 
+                className="btn-primary" 
+                onClick={closeAlert}
+                style={{ width: '100%', padding: '12px', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold' }}
+              >
+                我知道了
+              </button>
+            )}
           </div>
         </div>
       )}

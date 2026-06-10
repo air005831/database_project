@@ -92,6 +92,7 @@ function PartyDetail() {
 							line: `${p.replace(/\s+/g, "_").toLowerCase()}_line`,
 							age: 20 + idx * 2,
 							level: ["S", "A", "B", "C"][idx % 4],
+							gender: idx % 2 === 0 ? "男" : "女",
 						};
 					}
 					// 如果是對象但缺少 ID，補上模擬 ID
@@ -206,7 +207,7 @@ function PartyDetail() {
 	const [joinType, setJoinType] = useState(null);
 	const [toastMsg, setToastMsg] = useState("");
 	const [showListModal, setShowListModal] = useState(null); // 'participants' | 'waitlist' | null
-	const [selectedMember, setSelectedMember] = useState(null); // 新增：被選擇查看資料的成員
+	const [selectedMember, setSelectedMember] = useState(null); // 簡單資料 Modal
 
 	// 判斷是否為歷史球局 (已結束或已關閉)
 	const isHistory = useMemo(() => {
@@ -375,6 +376,7 @@ function PartyDetail() {
 				line: "my_id_888",
 				age: 20,
 				level: "A",
+				gender: userGender
 			};
 
 			const isWaitlist = response && response.status === "waitlist";
@@ -986,16 +988,25 @@ function PartyDetail() {
 									>
 										<div
 											className="participant-avatar"
-											style={
-												showListModal === "waitlist"
-													? { backgroundColor: "#94a3b8" }
-													: {}
-											}
+											style={{
+												...(showListModal === "waitlist" ? { backgroundColor: "#94a3b8" } : {}),
+												cursor: "pointer",
+												overflow: "hidden",
+												display: "flex",
+												alignItems: "center",
+												justifyContent: "center",
+												border: "2px solid #f1f5f9"
+											}}
+											onClick={() => navigate(`/profile/${p.id}`, { state: { mockUser: p } })}
 										>
-											{p.name.charAt(0)}
+											{p.avatar ? (
+												<img src={p.avatar} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+											) : (
+												p.name.charAt(0)
+											)}
 										</div>
 										<div style={{ display: "flex", flexDirection: "column" }}>
-											<span style={{ fontWeight: "700" }}>
+											<span style={{ fontWeight: "700", cursor: "pointer" }} onClick={() => navigate(`/profile/${p.id}`, { state: { mockUser: p } })}>
 												{p.name}
 												{showListModal === "participants" && idx === 0 && (
 													<span
@@ -1038,17 +1049,85 @@ function PartyDetail() {
 											</div>
 										</div>
 									</div>
-									<button
-										className="btn-outline"
-										style={{
-											padding: "6px 12px",
-											fontSize: "13px",
-											borderRadius: "8px",
-										}}
-										onClick={() => setSelectedMember(p)}
-									>
-										查看資料
-									</button>
+									<div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+										{(p.gender === "male" || p.gender === "男") ? (
+											<span style={{ backgroundColor: "#eff6ff", color: "#3b82f6", display: "inline-flex", alignItems: "center", justifyContent: "center", width: "30px", height: "30px", borderRadius: "50%", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+												<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+													<circle cx="10" cy="14" r="5"></circle>
+													<line x1="13.5" y1="10.5" x2="19" y2="5"></line>
+													<polyline points="15 5 19 5 19 9"></polyline>
+												</svg>
+											</span>
+										) : (p.gender === "female" || p.gender === "女") ? (
+											<span style={{ backgroundColor: "#fdf2f8", color: "#ec4899", display: "inline-flex", alignItems: "center", justifyContent: "center", width: "30px", height: "30px", borderRadius: "50%", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+												<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+													<circle cx="12" cy="9" r="5"></circle>
+													<line x1="12" y1="14" x2="12" y2="21"></line>
+													<line x1="9" y1="18" x2="15" y2="18"></line>
+												</svg>
+											</span>
+										) : p.gender ? (
+											<span style={{ color: "#94a3b8", fontSize: "12px", border: "1px solid #cbd5e1", padding: "4px 8px", borderRadius: "12px", backgroundColor: "#f8fafc", fontWeight: "600" }}>{p.gender}</span>
+										) : null}
+										
+										{String(p.id) !== String(currentUserId) && (
+											<button
+												className="btn-outline"
+												style={{
+													padding: "6px 12px",
+													fontSize: "13px",
+													borderRadius: "8px",
+												}}
+												onClick={() => setSelectedMember(p)}
+											>
+												查看資料
+											</button>
+										)}
+										{isHistory && isParticipant &&
+											String(p.id) !== String(currentUserId) &&
+											p.name !== "我 (使用者)" &&
+											p.name !== "我 (主揪)" &&
+											(reportedUsers.includes(p.id) ? (
+												<button
+													disabled
+													style={{
+														background: "none",
+														border: "none",
+														cursor: "not-allowed",
+														display: "flex",
+														alignItems: "center",
+														gap: "4px",
+														color: "#94a3b8",
+														fontSize: "13px",
+														fontWeight: "700",
+													}}
+													title="已檢舉"
+												>
+													<AlertTriangle size={16} />
+												</button>
+											) : (
+												<button
+													onClick={() => {
+														setShowReportModal(true);
+														setReportingUser(p.id);
+													}}
+													style={{
+														background: "none",
+														border: "none",
+														cursor: "pointer",
+														display: "flex",
+														alignItems: "center",
+														gap: "4px",
+														color: "#ef4444",
+														fontSize: "13px",
+														fontWeight: "700",
+													}}
+													title="檢舉"
+												>
+													<AlertTriangle size={16} />
+												</button>
+											))}
+									</div>
 								</div>
 							))}
 							{showListModal === "waitlist" && party.waitlist.length === 0 && (
@@ -1067,134 +1146,7 @@ function PartyDetail() {
 				</div>
 			)}
 
-			{/* 成員詳細資料 Modal */}
-			{selectedMember && (
-				<div
-					className="modal-overlay"
-					onClick={() => setSelectedMember(null)}
-					style={{ zIndex: 1100 }}
-				>
-					<div
-						className="modal-content"
-						onClick={(e) => e.stopPropagation()}
-						style={{
-							maxWidth: "320px",
-							textAlign: "center",
-							position: "relative",
-						}}
-					>
-						{isParticipant &&
-							String(selectedMember.id) !== String(currentUserId) &&
-							selectedMember.name !== "我 (使用者)" &&
-							selectedMember.name !== "我 (主揪)" &&
-							(reportedUsers.includes(selectedMember.id) ? (
-								<button
-									disabled
-									style={{
-										position: "absolute",
-										top: "16px",
-										right: "16px",
-										background: "none",
-										border: "none",
-										cursor: "not-allowed",
-										display: "flex",
-										alignItems: "center",
-										gap: "4px",
-										color: "#94a3b8",
-										fontSize: "13px",
-										fontWeight: "700",
-									}}
-								>
-									<AlertTriangle size={16} /> 已檢舉
-								</button>
-							) : (
-								<button
-									onClick={() => {
-										setShowReportModal(true);
-										setReportingUser(selectedMember.id);
-										setSelectedMember(null);
-									}}
-									style={{
-										position: "absolute",
-										top: "16px",
-										right: "16px",
-										background: "none",
-										border: "none",
-										cursor: "pointer",
-										display: "flex",
-										alignItems: "center",
-										gap: "4px",
-										color: "#ef4444",
-										fontSize: "13px",
-										fontWeight: "700",
-									}}
-								>
-									<AlertTriangle size={16} /> 檢舉
-								</button>
-							))}
-						<div
-							className="avatar-placeholder"
-							style={{
-								width: "80px",
-								height: "80px",
-								fontSize: "32px",
-								marginBottom: "16px",
-								margin: "0 auto 16px auto",
-							}}
-						>
-							{selectedMember.name.charAt(0)}
-						</div>
-						<h3 style={{ marginBottom: "8px" }}>{selectedMember.name}</h3>
-						<p
-							style={{
-								color: "var(--text-muted)",
-								fontSize: "14px",
-								marginBottom: "24px",
-							}}
-						>
-							成員聯繫資訊
-						</p>
 
-						<div
-							style={{
-								textAlign: "left",
-								backgroundColor: "#f1f5f9",
-								padding: "16px",
-								borderRadius: "12px",
-								marginBottom: "24px",
-							}}
-						>
-							<div
-								style={{
-									marginBottom: "12px",
-									display: "flex",
-									justifyContent: "space-between",
-								}}
-							>
-								<span style={{ color: "#64748b", fontSize: "13px" }}>
-									電話號碼
-								</span>
-								<span style={{ fontWeight: "700" }}>
-									{selectedMember.phone}
-								</span>
-							</div>
-							<div style={{ display: "flex", justifyContent: "space-between" }}>
-								<span style={{ color: "#64748b", fontSize: "13px" }}>
-									LINE / 通訊
-								</span>
-								<span style={{ fontWeight: "700" }}>{selectedMember.line}</span>
-							</div>
-						</div>
-
-						<button
-							className="login-button"
-							onClick={() => setSelectedMember(null)}
-						>
-							關閉
-						</button>
-					</div>
-				</div>
-			)}
 
 			{/* 等級不符警告 Modal */}
 			{showLevelWarningModal && (
@@ -1616,6 +1568,40 @@ function PartyDetail() {
 
 			{/* Toast Notification */}
 			{toastMsg && <div className="toast-message">{toastMsg}</div>}
+
+			{/* 簡單資料 Modal */}
+			{selectedMember && (
+				<div className="modal-overlay" onClick={() => setSelectedMember(null)} style={{ zIndex: 1100 }}>
+					<div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '320px', textAlign: 'center', position: 'relative' }}>
+						<div className="avatar-placeholder" style={{ width: '80px', height: '80px', fontSize: '32px', marginBottom: '16px', margin: '0 auto 16px auto', overflow: 'hidden', border: '3px solid #f1f5f9' }}>
+							{selectedMember.avatar ? (
+								<img src={selectedMember.avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+							) : (
+								selectedMember.name.charAt(0)
+							)}
+						</div>
+						<h3 style={{ marginBottom: '8px', fontSize: '20px' }}>{selectedMember.name}</h3>
+						<p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '24px' }}>聯絡資訊</p>
+						
+						<div style={{ textAlign: 'left', backgroundColor: '#f1f5f9', padding: '16px', borderRadius: '12px', marginBottom: '24px' }}>
+							<div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+								<span style={{ color: '#64748b', fontSize: '13px' }}>聯絡電話</span>
+								<span style={{ fontWeight: '700', fontSize: '15px' }}>{selectedMember.phone || '-'}</span>
+							</div>
+							<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+								<span style={{ color: '#64748b', fontSize: '13px' }}>LINE ID</span>
+								<span style={{ fontWeight: '700', fontSize: '15px' }}>{selectedMember.line || '-'}</span>
+							</div>
+							<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
+								<span style={{ color: '#64748b', fontSize: '13px' }}>Instagram</span>
+								<span style={{ fontWeight: '700', fontSize: '15px' }}>{selectedMember.instagram || '-'}</span>
+							</div>
+						</div>
+						
+						<button className="login-button" onClick={() => setSelectedMember(null)}>關閉</button>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }
