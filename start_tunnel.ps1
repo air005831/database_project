@@ -3,14 +3,46 @@
 $BACKEND_PORT = 8088
 $FRONTEND_PORT = 5173
 
+# ==========================================
+# Cleanup existing processes & ports to avoid conflicts
+# ==========================================
+Write-Host "🧹 Stopping any existing cloudflared processes..." -ForegroundColor Gray
+Stop-Process -Name "cloudflared" -Force -ErrorAction SilentlyContinue
+
+function Free-Port {
+    param([int]$Port)
+    Write-Host "🔍 Checking port $Port..." -ForegroundColor Gray
+    $connections = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+    if ($connections) {
+        foreach ($conn in $connections) {
+            $pidToKill = $conn.OwningProcess
+            if ($pidToKill -gt 0) {
+                Write-Host "💥 Killing process $pidToKill using port $Port..." -ForegroundColor Yellow
+                Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
+            }
+        }
+        Start-Sleep -Seconds 1
+    }
+}
+
+Free-Port $BACKEND_PORT
+Free-Port $FRONTEND_PORT
+
 # 2. Cleanup old logs
 $BE_LOG = "backend_tunnel.log"
 $FE_LOG = "frontend_tunnel.log"
 if (Test-Path $BE_LOG) { Remove-Item $BE_LOG }
 if (Test-Path $FE_LOG) { Remove-Item $FE_LOG }
 
+# Resolve Python executable
+$PYTHON_BIN = "python"
+if (Test-Path "backend/env/Scripts/python.exe") {
+    $PYTHON_BIN = "backend/env/Scripts/python.exe"
+    Write-Host "📦 Found virtual environment, using: $PYTHON_BIN" -ForegroundColor Gray
+}
+
 Write-Host "🚀 Starting Backend Django..." -ForegroundColor Cyan
-Start-Process python -ArgumentList "backend/run_dev_server.py" -NoNewWindow
+Start-Process $PYTHON_BIN -ArgumentList "backend/run_dev_server.py" -NoNewWindow
 Start-Sleep -Seconds 3
 
 Write-Host "🌐 Starting Cloudflare Tunnel (Backend)..." -ForegroundColor Cyan
