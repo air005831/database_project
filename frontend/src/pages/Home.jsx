@@ -565,11 +565,168 @@ function Home() {
 
       {isModalOpen && (
         <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <h3>發起揪團</h3>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h3>發起新揪團</h3>
+              <button type="button" className="modal-close" onClick={() => setIsModalOpen(false)}>×</button>
+            </div>
             <form onSubmit={handleCreateParty}>
-              <input type="text" placeholder="標題" value={newParty.title} onChange={e => setNewParty({...newParty, title: e.target.value})} />
-              <button type="submit">確認發起</button>
+              <div className="form-group">
+                <label className="form-label">揪團標題</label>
+                <input required type="text" className="form-input" placeholder="例如：今晚巨蛋鬥牛缺二" value={newParty.title} onChange={e => setNewParty({...newParty, title: e.target.value})} />
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
+                {/* 左欄：活動細節 */}
+                <div>
+                  <div className="form-group">
+                    <label className="form-label">活動類型</label>
+                    <select className="form-input" value={newParty.type} onChange={e => setNewParty({...newParty, type: e.target.value})}>
+                      <option value="籃球">籃球</option>
+                      <option value="麻將">麻將</option>
+                      <option value="桌球">桌球</option>
+                      <option value="羽球">羽球</option>
+                      <option value="排球">排球</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'visible' }}>
+                      程度
+                      <div 
+                        style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+                        onMouseEnter={() => setShowLevelInfo(true)}
+                        onMouseLeave={() => setShowLevelInfo(false)}
+                      >
+                        <HelpCircle size={14} style={{ cursor: 'pointer', color: '#94a3b8' }} />
+                        {showLevelInfo && (
+                          <div style={{ position: 'absolute', bottom: '100%', left: '-8px', marginBottom: '8px', width: '240px', backgroundColor: '#1e293b', color: 'white', padding: '12px', borderRadius: '8px', fontSize: '13px', fontWeight: 'normal', zIndex: 50, boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', lineHeight: '1.5', cursor: 'default' }}>
+                            <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>各程度推薦參加者</div>
+                            <ul style={{ margin: 0, paddingLeft: '16px', color: '#e2e8f0' }}>
+                              <li style={{ marginBottom: '4px' }}><strong>休閒：</strong> 推薦 C (新手)、B (熟練)</li>
+                              <li style={{ marginBottom: '4px' }}><strong>業餘：</strong> 推薦 A (高手)、B (熟練)</li>
+                              <li><strong>高手：</strong> 推薦 S (菁英)、A (高手)</li>
+                            </ul>
+                            <div style={{ position: 'absolute', bottom: '-4px', left: '11px', width: '8px', height: '8px', backgroundColor: '#1e293b', borderRadius: '2px', rotate: '45deg' }}></div>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                    <select className="form-input" value={newParty.level} onChange={e => setNewParty({...newParty, level: e.target.value})}>
+                      <option value="休閒">休閒</option>
+                      <option value="業餘">業餘</option>
+                      <option value="高手">高手</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">性別限制</label>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <button type="button" className={`role-btn ${newParty.genderLimit === '不限' ? 'active' : ''}`} style={{ flex: 1, border: '1px solid #e2e8f0', padding: '8px' }} onClick={() => setNewParty({...newParty, genderLimit: '不限'})}>不限</button>
+                      <button type="button" className={`role-btn ${newParty.genderLimit === '限男' ? 'active' : ''}`} style={{ flex: 1, border: '1px solid #e2e8f0', padding: '8px' }} onClick={() => setNewParty({...newParty, genderLimit: '限男'})}>限男</button>
+                      <button type="button" className={`role-btn ${newParty.genderLimit === '限女' ? 'active' : ''}`} style={{ flex: 1, border: '1px solid #e2e8f0', padding: '8px' }} onClick={() => setNewParty({...newParty, genderLimit: '限女'})}>限女</button>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">活動時間</label>
+                    <input 
+                      type="datetime-local" 
+                      className="form-input custom-date-input" 
+                      value={newParty.time} 
+                      onChange={e => setNewParty({...newParty, time: e.target.value})} 
+                      min={new Date().toISOString().slice(0, 16)}
+                      required 
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">預計時長</label>
+                    <select className="form-input" value={newParty.duration} onChange={e => setNewParty({...newParty, duration: e.target.value})}>
+                      <option value="1 小時">1 小時</option>
+                      <option value="1.5 小時">1.5 小時</option>
+                      <option value="2 小時">2 小時</option>
+                      <option value="2.5 小時">2.5 小時</option>
+                      <option value="3 小時">3 小時</option>
+                      <option value="4 小時">4 小時</option>
+                      <option value="5 小時">5 小時</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 右欄：地點資訊 */}
+                <div>
+                  <div className="form-group">
+                    <label className="form-label">地點 (縣市)</label>
+                    <select className="form-input" value={newParty.city} onChange={handleCityChange}>
+                      {Object.keys(taiwanRegions).map(city => (
+                        <option key={city} value={city}>{city}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">地點 (區域)</label>
+                    <select className="form-input" value={newParty.district} onChange={handleDistrictChange}>
+                      {Object.keys(taiwanRegions[newParty.city] || {}).map(dist => (
+                        <option key={dist} value={dist}>{dist}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">地點 (場館/球場)</label>
+                    <select className="form-input" value={newParty.venue} onChange={e => setNewParty({...newParty, venue: e.target.value})}>
+                      {(taiwanRegions[newParty.city]?.[newParty.district] || []).map(v => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">總額費用</label>
+                    <input 
+                      type="number" 
+                      className="form-input" 
+                      placeholder="輸入場地總額 (若為免費請輸入 0)" 
+                      value={newParty.price} 
+                      onChange={e => setNewParty({...newParty, price: e.target.value})}
+                      min="0"
+                      max="10000"
+                      required
+                    />
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>* 系統將會依據人數自動為您計算分攤金額</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                <div className="form-group">
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                    人數需求 (最少 ~ 最多)
+                  </label>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>* 請填寫包含主揪在內的總人數！</div>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <input required type="number" min="1" max="100" className="form-input" value={newParty.minPlayers} onChange={e => setNewParty({...newParty, minPlayers: e.target.value})} />
+                    <span style={{ color: '#64748b' }}>~</span>
+                    <input required type="number" min="2" max="100" className="form-input" value={newParty.maxPlayers} onChange={e => setNewParty({...newParty, maxPlayers: e.target.value})} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">揪團說明 / 備註 (選填)</label>
+                <textarea 
+                  className="form-input" 
+                  rows="3" 
+                  placeholder="寫下你的規則、或想對大家說的話..." 
+                  value={newParty.description} 
+                  onChange={e => setNewParty({...newParty, description: e.target.value})}
+                  style={{ resize: 'none' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '16px', marginTop: '24px' }}>
+                <button type="button" className="btn-outline" style={{ flex: 1, margin: 0, padding: '12px', borderRadius: '12px' }} onClick={() => setIsModalOpen(false)}>
+                  取消
+                </button>
+                <button type="submit" className="login-button" style={{ flex: 1, margin: 0, padding: '12px', borderRadius: '12px' }}>
+                  確認發起
+                </button>
+              </div>
             </form>
           </div>
         </div>
