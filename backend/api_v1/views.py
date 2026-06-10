@@ -11,19 +11,20 @@ from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 
 from .models import (
-     Sport, UserSportLevel, Address, Venue, Court, CourtConflict,
-     GameMatch, MatchParticipant, FavoriteGame,
-     PenaltyRule, Report, Blacklist,
-     Notification, GameBulletin, Feedback, Announcement, Facility
+    Sport, UserSportLevel, Address, Venue, Court, CourtConflict,
+    GameMatch, MatchParticipant, FavoriteGame,
+    PenaltyRule, Report, Blacklist,
+    Notification, GameBulletin, Feedback, FeedbackType, Announcement, Facility
 )
 from .serializers import (
-     UserSerializer, UserProfileSerializer, SportSerializer, UserSportLevelSerializer,
-     AddressSerializer, VenueSerializer, CourtSerializer, GameMatchSerializer,
-     GameMatchListSerializer, MatchParticipantUserSerializer,
-     MatchParticipantSerializer, FavoriteGameSerializer,
-     PenaltyRuleSerializer, ReportSerializer,
-     BlacklistSerializer, NotificationSerializer, GameBulletinSerializer,
-     FeedbackSerializer, AnnouncementSerializer
+    FeedbackTypeSerializer,
+    UserSerializer, UserProfileSerializer, SportSerializer, UserSportLevelSerializer,
+    AddressSerializer, VenueSerializer, CourtSerializer, GameMatchSerializer,
+    GameMatchListSerializer, MatchParticipantUserSerializer,
+    MatchParticipantSerializer, FavoriteGameSerializer,
+    PenaltyRuleSerializer, ReportSerializer,
+    BlacklistSerializer, NotificationSerializer, GameBulletinSerializer,
+    FeedbackSerializer, AnnouncementSerializer
 )
 
 User = get_user_model()
@@ -608,6 +609,7 @@ def update_all_match_statuses():
     # Fetch recruiting, full, and started matches
     active_matches = GameMatch.objects.filter(match_status__in=['recruiting', 'full', 'started'])
     
+    changed = False
     for match in active_matches:
         start_time = get_match_start_datetime(match)
         end_time = get_match_end_datetime(match)
@@ -643,6 +645,7 @@ def update_all_match_statuses():
                         # Successfully started
                         match.match_status = 'started'
                         match.save()
+                        changed = True
                         msg_contains = "已經開始"
                         for p in match.participants.all():
                             if not Notification.objects.filter(user=p.user, match=match, message__contains=msg_contains).exists():
@@ -660,11 +663,13 @@ def update_all_match_statuses():
                                 message=f"【活動取消】您參與的球局「{match.game_name}」因人數未達下限（{match.least_players}人）已取消。"
                             )
                         match.delete()
+                        changed = True
             else:
                 # Past end time
                 if match.current_players_count >= match.least_players:
                     match.match_status = 'closed'
                     match.save()
+                    changed = True
                     # Also make sure they got start notification (in case it ended without started trigger)
                     msg_contains_start = "已經開始"
                     for p in match.participants.all():
@@ -689,6 +694,10 @@ def update_all_match_statuses():
                             message=f"【活動取消】您參與的球局「{match.game_name}」因人數未達下限已取消。"
                         )
                     match.delete()
+                    changed = True
+
+    if changed:
+        trigger_game_update()
 
 class GameMatchViewSet(viewsets.ModelViewSet):
     queryset = GameMatch.objects.all()
@@ -950,15 +959,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 content=announcement_text
             )
         
-        # venue = match.court.venue
-        # if venue:
-        #     favs = FavoriteVenue.objects.filter(venue=venue)
-        #     for f in favs:
-        #         Notification.objects.create(
-        #             user=f.user,
-        #             match=match,
-        #             message=f"新球局開團通知 🏸：您收藏的場館【{venue.name}】有新的「{match.sport.chinese_name}」球局發起了，趕快去看看吧！"
-        #         )
+        trigger_game_update(match.id)
 
     def perform_update(self, serializer):
         match = serializer.save()
@@ -994,6 +995,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                         match=match,
                         message=f"球局資訊修改通知 🏸：您參加的球局「{match.sport.chinese_name}」已被主揪修改了資訊，請查看最新時間與內容。"
                     )
+        trigger_game_update(match.id)
 
     def destroy(self, request, *args, **kwargs):
         match = self.get_object()
@@ -1017,6 +1019,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 
         # 物理刪除球局，以符合新機制 (通知已設為 SET_NULL 會保留)
         match.delete()
+        trigger_game_update(match.id)
         
         return Response({"detail": "球局已成功取消。"}, status=status.HTTP_200_OK)
 
@@ -1169,7 +1172,8 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 "status": "joined",
                 "message": "成功加入球局。"
             }
-
+        
+        trigger_game_update(match.id)
         return Response(response_data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['delete'], url_path='leave')
@@ -1216,6 +1220,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 match.match_status = 'recruiting'
             match.save()
 
+        trigger_game_update(match.id)
         response_data = {"detail": "Successfully left the match."}
         if warning_msg:
             response_data["warning"] = warning_msg
@@ -1282,6 +1287,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 match.match_status = 'recruiting'
             match.save()
 
+        trigger_game_update(match.id)
         response_data = {"detail": "成功取消報名並退出球局。"}
         if deducted:
             response_data["warning"] = warning_msg
@@ -1398,9 +1404,11 @@ class GameMatchViewSet(viewsets.ModelViewSet):
 
         if is_failed:
             match.delete()
+            trigger_game_update(match.id)
             return Response({"detail": "球局因場地預約失敗已取消並刪除。"}, status=status.HTTP_200_OK)
 
         # 回傳完整的球局資料，方便前端同步
+        trigger_game_update(match.id)
         serializer = self.get_serializer(match)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -1668,6 +1676,7 @@ class AdminGameViewSet(viewsets.ModelViewSet):
 
         if updated_fields:
             match.save(update_fields=updated_fields)
+            trigger_game_update(match.id)
             return Response({"detail": f"Updated fields: {', '.join(updated_fields)}"})
         return Response({"detail": "No fields to update."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -2032,11 +2041,110 @@ class FeedbackViewSet(viewsets.ModelViewSet):
 
         return Response(FeedbackSerializer(feedback).data, status=status.HTTP_200_OK)
 
+class FeedbackTypeViewSet(viewsets.ModelViewSet):
+    queryset = FeedbackType.objects.all()
+    serializer_class = FeedbackTypeSerializer
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [IsAdminRole()]
+
 import os
 import uuid
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
+
+import time
+import json
+from django.http import StreamingHttpResponse
+from django.db.models import Count
+
+import threading
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+
+import queue
+
+# SSE 推送佇列管理
+sse_queues = []
+sse_lock = threading.Lock()
+
+def trigger_game_update(match_id=None):
+    """
+    當球局或參與者資料有變動時，立即觸發 SSE 推送。
+    使用 on_commit 確保在資料庫交易完成後才推送，避免 SSE 執行緒抓到舊資料。
+    match_id: 可選，指定變動的球局 ID，若為 None 則通知重新抓取全部。
+    """
+    def do_put():
+        with sse_lock:
+            for q in sse_queues:
+                q.put(match_id)
+                
+    transaction.on_commit(do_put)
+
+def stream_game_updates(request):
+    """
+    Event-driven SSE endpoint: uses a pub-sub queue for instant and partial updates.
+    """
+    def event_stream():
+        # 為此連線建立專屬佇列
+        q = queue.Queue()
+        with sse_lock:
+            sse_queues.append(q)
+            
+        try:
+            # 連線建立時先推送一次完整列表
+            q.put(None) 
+            
+            while True:
+                # 等待佇列信號 (30 秒超時作為 Keep-alive)
+                try:
+                    target_match_id = q.get(timeout=30)
+                except queue.Empty:
+                    # Keep-alive: 發送一個空的註解或重複發送最近狀態
+                    yield ": keep-alive\n\n"
+                    continue
+                
+                now = timezone.now()
+                
+                if target_match_id is None:
+                    # 抓取所有招募中/進行中的球局
+                    matches = GameMatch.objects.filter(
+                        booking_date__gte=now.date(),
+                        match_status__in=['recruiting', 'full', 'started']
+                    ).prefetch_related('participants').only('id', 'match_status', 'booking_status', 'most_players')
+                else:
+                    # 僅抓取特定的球局
+                    matches = GameMatch.objects.filter(id=target_match_id).prefetch_related('participants')
+
+                data_list = []
+                for m in matches:
+                    p_ids = [p.user_id for p in m.participants.all()]
+                    data_list.append({
+                        'id': m.id, 'ms': m.match_status, 'bs': m.booking_status,
+                        'mp': m.most_players, 'cp': len(p_ids), 'p_ids': p_ids
+                    })
+                
+                if data_list:
+                    current_data = json.dumps(data_list)
+                    yield f"data: {current_data}\n\n"
+                elif target_match_id is not None:
+                    # 如果抓不到特定的 ID，代表可能已被刪除
+                    yield f"data: [{{\"id\": {target_match_id}, \"deleted\": true}}]\n\n"
+                
+        except Exception as e:
+            yield f"data: {{\"error\": \"{str(e)}\"}}\n\n"
+        finally:
+            with sse_lock:
+                if q in sse_queues:
+                    sse_queues.remove(q)
+                
+    response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'
+    return response
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])

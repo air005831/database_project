@@ -3,7 +3,7 @@ from .models import (
     User, Sport, UserSportLevel, Address, Facility, Venue, Court, GameMatch, 
     MatchParticipant, FavoriteGame, 
     PenaltyRule, Report, Blacklist, Notification, GameBulletin,
-    Feedback, Announcement
+    Feedback, FeedbackType, Announcement
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -775,6 +775,11 @@ class FeedbackSerializer(serializers.ModelSerializer):
         model = Feedback
         fields = ('id', 'user', 'user_name', 'type', 'content', 'is_handled', 'admin_reply', 'created_at')
         read_only_fields = ('id', 'user', 'created_at')
+
+class FeedbackTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeedbackType
+        fields = '__all__'
 
 class AnnouncementSerializer(serializers.ModelSerializer):
     class Meta:
