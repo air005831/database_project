@@ -21,6 +21,7 @@ function SetupProfile() {
   const [showLevelHelp, setShowLevelHelp] = useState(false);
   const [avatar, setAvatar] = useState('https://api.dicebear.com/9.x/adventurer/svg?seed=Lucky');
   const [isLoading, setIsLoading] = useState(false);
+  const [modal, setModal] = useState({ show: false, message: '', title: '', type: 'error', onConfirm: null });
   const navigate = useNavigate();
 
   // 預設可愛頭貼清單 (精選 8 款)
@@ -45,7 +46,7 @@ function SetupProfile() {
     // 手機號碼格式驗證 (台灣格式: 09xxxxxxxx)
     const phoneRegex = /^09\d{8}$/;
     if (!phoneRegex.test(phone)) {
-      alert('請輸入正確的手機號碼格式 (例如: 0912345678)！');
+      setModal({ show: true, title: '格式錯誤', message: '請輸入正確的手機號碼格式 (例如: 0912345678)！', type: 'error' });
       return;
     }
 
@@ -61,8 +62,16 @@ function SetupProfile() {
         line_id: line,
         instagram: ig
       });
-      alert('設定完成，歡迎加入！');
-      navigate('/home');
+      setModal({ 
+        show: true, 
+        title: '設定完成 🎉', 
+        message: '歡迎加入不揪ㄛ！', 
+        type: 'success'
+      });
+      setTimeout(() => {
+        setModal(prev => ({ ...prev, show: false }));
+        navigate('/home');
+      }, 2000);
     } catch (error) {
       console.error('Setup profile error:', error);
       let errorMsg = '檔案設定失敗，請稍後再試！';
@@ -75,7 +84,7 @@ function SetupProfile() {
           errorMsg = `設定失敗：${data.detail}`;
         }
       }
-      alert(errorMsg);
+      setModal({ show: true, title: '設定失敗', message: errorMsg, type: 'error' });
     } finally {
       setIsLoading(false);
     }
@@ -288,6 +297,56 @@ function SetupProfile() {
             </div>
             
             <button className="login-button" style={{ marginTop: '32px' }} onClick={() => setShowLevelHelp(false)}>我瞭解了</button>
+          </div>
+        </div>
+      )}
+
+      {/* Alert Modal */}
+      {modal.show && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div style={{
+            backgroundColor: '#fff', borderRadius: '16px', padding: '32px',
+            width: '90%', maxWidth: '360px', textAlign: 'center',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            transform: 'scale(1)', animation: 'popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+          }}>
+            <div style={{
+              width: '48px', height: '48px', borderRadius: '50%', margin: '0 auto 16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              backgroundColor: modal.type === 'success' ? '#dcfce7' : '#fee2e2',
+              color: modal.type === 'success' ? '#16a34a' : '#ef4444'
+            }}>
+              {modal.type === 'success' ? (
+                <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              ) : (
+                <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              )}
+            </div>
+            <h3 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: '700', color: '#1e293b' }}>{modal.title}</h3>
+            <p style={{ margin: '0 0 24px', color: '#64748b', fontSize: '15px', lineHeight: '1.5' }}>{modal.message}</p>
+            {modal.type !== 'success' && (
+              <button
+                onClick={() => {
+                  setModal({ ...modal, show: false });
+                  if (modal.onConfirm) modal.onConfirm();
+                }}
+                style={{
+                  width: '100%', padding: '12px', borderRadius: '8px', border: 'none',
+                  backgroundColor: '#ef4444',
+                  color: 'white', fontWeight: '600', fontSize: '15px', cursor: 'pointer',
+                  transition: 'opacity 0.2s'
+                }}
+                onMouseOver={(e) => e.target.style.opacity = 0.9}
+                onMouseOut={(e) => e.target.style.opacity = 1}
+              >
+                我知道了
+              </button>
+            )}
           </div>
         </div>
       )}

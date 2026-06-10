@@ -42,6 +42,15 @@ const usersApi = {
    */
   searchUsers: (query) => {
     return axiosClient.get(`/users/?search=${encodeURIComponent(query)}`);
+  },
+
+  /**
+   * 取得特定使用者的公開資料
+   * @param {number|string} id - 使用者 ID
+   * @returns {Promise}
+   */
+  getPublicProfile: (id) => {
+    return axiosClient.get(`/users/${id}/public-profile/`);
   }
 };
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CloudSun, MapPin, Clock, Bell, HelpCircle, Star } from 'lucide-react';
+import { CloudSun, MapPin, Clock, Bell, HelpCircle, Star, AlertTriangle, CheckCircle2, CalendarX } from 'lucide-react';
 import gamesApi from '../api/games';
 import notificationsApi from '../api/notifications';
 import weatherApi from '../api/weather';
@@ -27,6 +27,17 @@ function Home() {
   const [temperature, setTemperature] = useState('--');
   const [weatherLocation, setWeatherLocation] = useState('桃園市');
   const [userProfile, setUserProfile] = useState(null);
+  const [alertData, setAlertData] = useState({ show: false, msg: '', type: 'error' });
+  const showAlert = (msg, type = 'error') => {
+    setAlertData({ show: true, msg, type });
+    if (type === 'success') {
+      setTimeout(() => {
+        setAlertData(prev => prev.show && prev.msg === msg ? { ...prev, show: false } : prev);
+      }, 1500);
+    }
+  };
+  const closeAlert = () => setAlertData({ ...alertData, show: false });
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [feedbackTypes, setFeedbackTypes] = useState([
@@ -161,28 +172,72 @@ function Home() {
   };
 
   const handleLogout = () => {
-    navigate('/');
+    navigate('/login');
   };
 
   const handleSendFeedback = async (e) => {
     e.preventDefault();
     try {
       await adminApi.submitFeedback(feedback);
-      alert('感謝您的回饋！');
+      showAlert('感謝您的回饋！管理員將會盡快查看。', 'success');
       setIsFeedbackOpen(false);
       setFeedback({ type: feedbackTypes[0]?.name || 'Bug 回報 (系統出錯)', content: '' });
     } catch (error) {
       console.error('Feedback error:', error);
+      showAlert('送出失敗，請稍後再試。');
     }
   };
 
   const handleCreateParty = async (e) => {
     e.preventDefault();
-    const sportMap = { '籃球': 1, '羽球': 2, '排球': 3, '桌球': 4, '麻將': 5 };
+
+    if (newParty.genderLimit && newParty.genderLimit !== '不限') {
+      const userGender = userProfile?.gender || '未公開';
+      if (
+        (newParty.genderLimit === '限男' && userGender !== '男') ||
+        (newParty.genderLimit === '限女' && userGender !== '女')
+      ) {
+        showAlert(`主揪性別為「${userGender}」，無法發起「${newParty.genderLimit}」的揪團！`);
+        return;
+      }
+    }
+
+    const userLevelInSportStr = userProfile?.levels?.[newParty.type] || 'C';
+    const userLevelInSport = userLevelInSportStr.charAt(0).toUpperCase();
+    const rankValue = { 'S': 4, 'A': 3, 'B': 2, 'C': 1 };
+    const requiredRank = { '高手': 3, '業餘': 2, '休閒': 1 };
+
+    if (rankValue[userLevelInSport] < requiredRank[newParty.level]) {
+      showAlert(`你的${newParty.type}程度為 ${userLevelInSport}，無法發起${newParty.level}喔！`);
+      return;
+    }
+
+    const sportMap = {
+      '籃球': 1,
+      '羽球': 2,
+      '排球': 3,
+      '桌球': 4,
+      '麻將': 5
+    };
+
     const venue_id = venueMap[newParty.venue] || 1;
     const dateObj = new Date(newParty.time);
-    const booking_date = dateObj.toISOString().split('T')[0];
-    const time_slot = `${dateObj.getHours()}:00-${dateObj.getHours()+2}:00`;
+
+    if (dateObj < new Date()) {
+      showAlert('球局時間不能早於現在時間！');
+      return;
+    }
+    const booking_date = dateObj.toISOString().split('T')[0]; // "YYYY-MM-DD"
+    const startHour = dateObj.getHours().toString().padStart(2, '0');
+    const startMin = dateObj.getMinutes().toString().padStart(2, '0');
+    
+    // Parse duration "2 小時" or "1.5 小時"
+    const durationHours = parseFloat(newParty.duration);
+    const endDateObj = new Date(dateObj.getTime() + durationHours * 60 * 60 * 1000);
+    const endHour = endDateObj.getHours().toString().padStart(2, '0');
+    const endMin = endDateObj.getMinutes().toString().padStart(2, '0');
+    
+    const time_slot = `${startHour}:${startMin}-${endHour}:${endMin}`;
 
     const payload = {
       sport_id: sportMap[newParty.type] || 1,
@@ -191,7 +246,7 @@ function Home() {
       least_players: parseInt(newParty.minPlayers, 10),
       target_level: newParty.level,
       booking_date,
-      start_time: `${dateObj.getHours()}:00`,
+      start_time: `${startHour}:${startMin}`,
       time_slot,
       duration: newParty.duration,
       total_price: parseFloat(newParty.price) || 0,
@@ -203,34 +258,41 @@ function Home() {
     try {
       await gamesApi.createGame(payload);
       setIsModalOpen(false);
+      setNewParty({ 
+        title: '', type: '籃球', level: '休閒', genderLimit: '不限', city: '桃園市', district: '桃園區', venue: '桃園國民運動中心', description: '', price: '', time: '', duration: '2 小時', minPlayers: 2, maxPlayers: 4 
+      });
       fetchData(false);
-      alert('發起成功！');
+      showAlert('發起成功！', 'success');
     } catch (error) {
-      console.error('Create error:', error);
+      console.error('Create party error:', error);
+      const backendError = error.response?.data ? JSON.stringify(error.response.data) : '伺服器未回應';
+      showAlert(`發起揪團失敗：${backendError}`);
     }
   };
 
   const handleCityChange = (e) => {
-    const city = e.target.value;
-    const firstDist = Object.keys(taiwanRegions[city] || {})[0] || '';
-    const filtered = allVenues.filter(v => 
-      v.city === city && 
-      v.district === firstDist && 
-      (v.sports || []).includes(newParty.type)
-    );
-    const firstVenue = filtered[0]?.name || '';
-    setNewParty({ ...newParty, city, district: firstDist, venue: firstVenue });
+    const selectedCity = e.target.value;
+    const districts = taiwanRegions[selectedCity] || {};
+    const firstDistrict = Object.keys(districts)[0] || '';
+    const venuesList = districts[firstDistrict] || [];
+    const firstVenue = venuesList[0] || '其他';
+    setNewParty({
+      ...newParty,
+      city: selectedCity,
+      district: firstDistrict,
+      venue: firstVenue
+    });
   };
 
   const handleDistrictChange = (e) => {
-    const district = e.target.value;
-    const filtered = allVenues.filter(v => 
-      v.city === newParty.city && 
-      v.district === district && 
-      (v.sports || []).includes(newParty.type)
-    );
-    const firstVenue = filtered[0]?.name || '';
-    setNewParty({ ...newParty, district, venue: firstVenue });
+    const selectedDistrict = e.target.value;
+    const venuesList = taiwanRegions[newParty.city]?.[selectedDistrict] || [];
+    const firstVenue = venuesList[0] || '其他';
+    setNewParty({
+      ...newParty,
+      district: selectedDistrict,
+      venue: firstVenue
+    });
   };
 
   // 3. Effects
@@ -244,8 +306,6 @@ function Home() {
 
     return () => {
       clearInterval(poll);
-      // 注意：如果是要在全域持續連線，這裡可以不中斷，或是由 Store 決定
-      // 這裡選擇由首頁控制連線週期，或是你也可以放在 App.jsx
     };
   }, []);
 
@@ -299,24 +359,142 @@ function Home() {
   }, []);
 
   useEffect(() => {
-    if (allVenues.length > 0) {
-      const filtered = allVenues.filter(v => 
-        v.city === newParty.city && 
-        v.district === newParty.district && 
-        (v.sports || []).includes(newParty.type)
-      );
-      
-      const hasCurrentVenue = filtered.some(v => v.name === newParty.venue);
-      if (!hasCurrentVenue) {
-        const firstVenue = filtered[0]?.name || '';
-        setNewParty(prev => ({ ...prev, venue: firstVenue }));
-      }
+    if (allVenues.length === 0) return;
+
+    // 後端資料庫裡的運動名稱是英文，需要對應
+    const sportMap = {
+      '籃球': 'Basketball',
+      '排球': 'Volleyball',
+      '羽球': 'Badminton',
+      '麻將': 'Mahjohn',
+      '桌球': 'Table Tennis'
+    };
+    const dbSportName = (sportMap[newParty.type] || newParty.type).toLowerCase();
+
+    const filteredVenues = allVenues.filter(v => 
+      v.sports.some(s => s.toLowerCase() === dbSportName || s.toLowerCase() === newParty.type.toLowerCase()) || 
+      v.sports.length === 0
+    );
+    
+    // 若該運動目前無可用場地，給個防呆
+    if (filteredVenues.length === 0) {
+      setTaiwanRegions({ '未選擇': { '未選擇': ['無適用場地'] } });
+      setVenueFacilities({});
+      setVenueMap({});
+      setNewParty(prev => ({ ...prev, city: '未選擇', district: '未選擇', venue: '無適用場地' }));
+      return;
     }
-  }, [newParty.type, newParty.city, newParty.district, allVenues]);
+
+    const regions = {};
+    const facilities = {};
+    const vMap = {};
+
+    filteredVenues.forEach(v => {
+      const city = v.city || '其他';
+      const district = v.district || '其他';
+      if (!regions[city]) regions[city] = {};
+      if (!regions[city][district]) regions[city][district] = [];
+      regions[city][district].push(v.name);
+      facilities[v.name] = v.facilities;
+      vMap[v.name] = v.id;
+    });
+
+    setTaiwanRegions(regions);
+    setVenueFacilities(facilities);
+    setVenueMap(vMap);
+
+    // 檢查目前選的場地是否還在新的清單裡，不在的話重設為第一個
+    const currentCityValid = regions[newParty.city];
+    const currentDistValid = currentCityValid && regions[newParty.city][newParty.district];
+    const currentVenueValid = currentDistValid && regions[newParty.city][newParty.district].includes(newParty.venue);
+
+    if (!currentVenueValid) {
+      const firstCity = Object.keys(regions)[0];
+      const firstDist = firstCity ? Object.keys(regions[firstCity])[0] : '未選擇';
+      const firstVenue = firstDist ? regions[firstCity][firstDist][0] : '無適用場地';
+      
+      setNewParty(prev => ({
+        ...prev,
+        city: firstCity,
+        district: firstDist,
+        venue: firstVenue
+      }));
+    }
+  }, [newParty.type, allVenues]);
 
   const renderModalContent = () => {
     if (!selectedAnnouncement) return null;
-    return <div style={{ whiteSpace: 'pre-wrap' }}>{selectedAnnouncement.content}</div>;
+    const content = selectedAnnouncement.content;
+    
+    // 1. 回饋回覆結構化格式
+    if (selectedAnnouncement.title === '系統通知' && content.includes('[Feedback]\n') && content.includes('[Reply]\n')) {
+      const parts = content.split('\n');
+      const feedbackHeaderIdx = parts.indexOf('[Feedback]');
+      const replyHeaderIdx = parts.indexOf('[Reply]');
+      
+      let feedbackText = '';
+      let replyText = '';
+      
+      if (feedbackHeaderIdx !== -1 && replyHeaderIdx !== -1) {
+        feedbackText = parts.slice(feedbackHeaderIdx + 1, replyHeaderIdx).join('\n').trim();
+        replyText = parts.slice(replyHeaderIdx + 1).join('\n').trim();
+      } else {
+        return <div style={{ whiteSpace: 'pre-wrap' }}>{content}</div>;
+      }
+      
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left', marginTop: '10px' }}>
+          <div style={{ padding: '14px 18px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', marginBottom: '6px' }}>您的意見回饋：</div>
+            <div style={{ fontSize: '14px', color: '#334155', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{feedbackText}</div>
+          </div>
+          <div style={{ padding: '14px 18px', backgroundColor: '#f0fdf4', borderRadius: '12px', border: '1px solid #bbf7d0', borderLeft: '4px solid #22c55e' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534', marginBottom: '6px' }}>
+              管理員回覆：
+            </div>
+            <div style={{ fontSize: '14px', color: '#14532d', lineHeight: '1.5', whiteSpace: 'pre-wrap', fontWeight: '500' }}>{replyText}</div>
+          </div>
+        </div>
+      );
+    }
+    
+    // 2. 檢舉通知格式
+    if (selectedAnnouncement.title === '系統通知' && content.startsWith('收到檢舉回覆：') && content.includes('管理員回覆：')) {
+      const cleanContent = content.replace('收到檢舉回覆：', '').trim();
+      const replyPrefix = '管理員回覆：';
+      const prefixIndex = cleanContent.indexOf(replyPrefix);
+      
+      let infoText = '';
+      let replyText = '';
+      
+      if (prefixIndex !== -1) {
+        infoText = cleanContent.substring(0, prefixIndex).trim();
+        replyText = cleanContent.substring(prefixIndex + replyPrefix.length).trim();
+      } else {
+        infoText = cleanContent;
+      }
+      
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left', marginTop: '10px' }}>
+          {infoText && (
+            <div style={{ padding: '14px 18px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', marginBottom: '6px' }}>檢舉詳情：</div>
+              <div style={{ fontSize: '14px', color: '#334155', lineHeight: '1.5' }}>{infoText}</div>
+            </div>
+          )}
+          {replyText && (
+            <div style={{ padding: '14px 18px', backgroundColor: '#f0fdf4', borderRadius: '12px', border: '1px solid #bbf7d0', borderLeft: '4px solid #22c55e' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534', marginBottom: '6px' }}>
+                管理員回覆：
+              </div>
+              <div style={{ fontSize: '14px', color: '#14532d', lineHeight: '1.5', whiteSpace: 'pre-wrap', fontWeight: '500' }}>{replyText}</div>
+            </div>
+          )}
+        </div>
+      );
+    }
+    
+    return <div style={{ whiteSpace: 'pre-wrap' }}>{content}</div>;
   };
 
   return (
@@ -329,7 +507,12 @@ function Home() {
               <Bell size={18} />
             </button>
             {showNotifications && (
-              <div className="notification-dropdown">
+              <>
+                <div 
+                  style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} 
+                  onClick={() => setShowNotifications(false)}
+                ></div>
+                <div className="notification-dropdown">
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', fontWeight: '700', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   通知中心
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -441,7 +624,7 @@ function Home() {
                                   setNotifications(notifications.filter(item => item.id !== n.id));
                                 } catch (err) {
                                   console.error('Failed to delete notification', err);
-                                  alert('刪除通知失敗，請稍後再試。');
+                                  showAlert('刪除通知失敗，請稍後再試。');
                                 }
                               }
                             }}
@@ -470,6 +653,7 @@ function Home() {
                   )}
                 </div>
               </div>
+              </>
             )}
           </div>
           <button className="btn-outline" onClick={() => setIsFeedbackOpen(true)}>意見回饋</button>
@@ -504,106 +688,180 @@ function Home() {
         </div>
 
         <div className="party-grid">
-          {parties
-            .filter(party => selectedFilterRegion === 'all' || (party.location && party.location.includes(selectedFilterRegion)))
-            .filter(party => selectedFilterDistrict === 'all' || (party.location && party.location.includes(selectedFilterDistrict)))
-            .filter(party => selectedCategory === '全部' || party.type === selectedCategory)
-            .sort((a, b) => {
-              const currentUserId = localStorage.getItem('user_id');
-              const isAHost = currentUserId && (
-                (a.creator_id && String(a.creator_id) === String(currentUserId)) || 
-                a.participants?.[0] === '我 (主揪)' || 
-                (a.user_id && String(a.user_id) === String(currentUserId))
-              );
-              const isAParticipant = currentUserId && (
-                a.participants?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
-                a.participant_ids?.some(id => String(id) === String(currentUserId))
-              );
-              const isBHost = currentUserId && (
-                (b.creator_id && String(b.creator_id) === String(currentUserId)) || 
-                b.participants?.[0] === '我 (主揪)' || 
-                (b.user_id && String(b.user_id) === String(currentUserId))
-              );
-              const isBParticipant = currentUserId && (
-                b.participants?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
-                b.participant_ids?.some(id => String(id) === String(currentUserId))
-              );
+          {(() => {
+            const filteredParties = parties
+              .filter(party => selectedFilterRegion === 'all' || (party.location && party.location.includes(selectedFilterRegion)))
+              .filter(party => selectedFilterDistrict === 'all' || (party.location && party.location.includes(selectedFilterDistrict)))
+              .filter(party => selectedCategory === '全部' || party.type === selectedCategory)
+              const getPriority = (party) => {
+                const isHost = currentUserId && (
+                  (party.creator_id && String(party.creator_id) === String(currentUserId)) || 
+                  (party.participants?.[0]?.id && String(party.participants[0].id) === String(currentUserId)) || 
+                  party.participants?.[0] === '我 (主揪)' || 
+                  party.participants?.[0] === '主揪人' ||
+                  (party.user_id && String(party.user_id) === String(currentUserId))
+                );
+                if (isHost) return 1;
+                
+                const isParticipant = currentUserId && (
+                  party.participants?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
+                  party.participant_ids?.some(id => String(id) === String(currentUserId))
+                );
+                const isWaitlisted = currentUserId && (
+                  party.waitlist?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
+                  party.waitlist_ids?.some(id => String(id) === String(currentUserId))
+                );
+                if (isParticipant || isWaitlisted) return 2;
+                
+                return 3;
+              };
 
-              const scoreA = (isAHost ? 2 : 0) + (isAParticipant ? 1 : 0);
-              const scoreB = (isBHost ? 2 : 0) + (isBParticipant ? 1 : 0);
-              return scoreB - scoreA;
-            })
-            .map(party => {
-              const currentUserId = localStorage.getItem('user_id');
-              const isHost = currentUserId && (
-                (party.creator_id && String(party.creator_id) === String(currentUserId)) || 
-                party.participants?.[0] === '我 (主揪)' || 
-                (party.user_id && String(party.user_id) === String(currentUserId))
-              );
-              const isParticipant = currentUserId && (
-                party.participants?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
-                party.participant_ids?.some(id => String(id) === String(currentUserId))
-              );
-              
-              const isFull = party.currentPlayers >= party.maxPlayers;
-              const statusText = isFull ? '已額滿' : `缺 ${party.maxPlayers - party.currentPlayers} 人`;
-              const statusColor = isFull ? '#94a3b8' : '#ef4444';
+              return getPriority(a) - getPriority(b);
+            });
 
+            if (filteredParties.length === 0) {
               return (
-                <div 
-                  key={party.id} 
-                  className={`party-card clickable-card ${isHost ? 'hosted-party' : (isParticipant ? 'joined-party' : '')}`} 
-                  onClick={() => navigate(`/party/${party.id}`, { state: { party } })}
-                >
-                  <div className="party-card-header">
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      {(isHost || isParticipant) && (
-                        <Star size={18} fill="#f59e0b" color="#f59e0b" style={{ marginRight: '4px' }} />
-                      )}
-                      <span className="party-type">{party.type}</span>
-                      <span className="party-level">{party.level}</span>
-                    </div>
-                    <span className="party-status" style={{ color: statusColor }}>{statusText}</span>
-                  </div>
-                  <h3 className="party-title">{party.title}</h3>
-                  <div className="party-info">
-                    <p><MapPin size={16} /> {party.location}</p>
-                    <p><Clock size={16} /> {party.time}</p>
-                  </div>
-                  <div className="party-card-footer">
-                    <span className="player-count">目前人數: {party.currentPlayers} / {party.maxPlayers}</span>
-                    <button className="btn-join">
-                      {isHost ? '管理' : (isParticipant ? '已參加' : '報名參加')}
-                    </button>
-                  </div>
+                <div style={{ padding: '60px 20px', textAlign: 'center', gridColumn: '1 / -1', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
+                  <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}><CalendarX size={48} color="#94a3b8" strokeWidth={1.5} /></div>
+                  <h3 style={{ color: '#475569', margin: '0 0 8px 0', fontSize: '18px', fontWeight: 'bold' }}>暫無球局，換你來揪吧！</h3>
+                  <p style={{ color: '#94a3b8', margin: 0, fontSize: '14px' }}>目前這個分類還沒有人發起揪團，點擊右下角發起第一場吧</p>
                 </div>
               );
-            })}
+            }
+
+            return filteredParties.map(party => {
+            const currentUserId = localStorage.getItem('user_id');
+            const isHost = currentUserId && (
+              (party.creator_id && String(party.creator_id) === String(currentUserId)) || 
+              (party.participants?.[0]?.id && String(party.participants[0].id) === String(currentUserId)) || 
+              party.participants?.[0] === '我 (主揪)' || 
+              party.participants?.[0] === '主揪人' ||
+              (party.user_id && String(party.user_id) === String(currentUserId))
+            );
+            const isParticipant = currentUserId && (
+              party.participants?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
+              party.participant_ids?.some(id => String(id) === String(currentUserId))
+            );
+            const isWaitlisted = currentUserId && (
+              party.waitlist?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
+              party.waitlist_ids?.some(id => String(id) === String(currentUserId))
+            );
+
+            const isFull = party.currentPlayers >= party.maxPlayers;
+            const isWaitlistFull = party.currentWaitlist >= party.maxWaitlist;
+
+            let statusText = `缺 ${party.maxPlayers - party.currentPlayers} 人`;
+            let statusColor = '#ef4444'; // Red
+            if (isFull && isWaitlistFull) {
+              statusText = '已完全額滿';
+              statusColor = '#94a3b8'; // Gray
+            } else if (isFull) {
+              statusText = `候補 ${party.currentWaitlist}/${party.maxWaitlist}`;
+              statusColor = '#f59e0b'; // Orange
+            }
+
+            let badgeStatusText = '';
+            let badgeStatusColor = '';
+
+            const backendStatus = party.match_status || party.status || party.game_status;
+            
+            if (backendStatus === '已開始' || backendStatus === 'started' || backendStatus === 'playing') {
+              badgeStatusText = '已開始';
+              badgeStatusColor = '#10b981'; // Green
+            } else if (backendStatus === '已關閉' || backendStatus === 'closed' || backendStatus === 'failed_to_start') {
+              badgeStatusText = '已關閉';
+              badgeStatusColor = '#64748b'; // Gray
+            } else if (backendStatus === '已滿' || backendStatus === 'full') {
+              if (!isWaitlistFull) {
+                badgeStatusText = '可候補';
+                badgeStatusColor = '#f59e0b'; // Orange
+              } else {
+                badgeStatusText = '已滿';
+                badgeStatusColor = '#94a3b8'; // Gray
+              }
+            } else if (backendStatus === '可候補' || backendStatus === 'waitlisting') {
+              badgeStatusText = '可候補';
+              badgeStatusColor = '#f59e0b'; // Orange
+            } else if (backendStatus === '缺人' || backendStatus === 'recruiting') {
+              badgeStatusText = '缺人';
+              badgeStatusColor = '#ef4444'; // Red
+            } else {
+              if (isFull && isWaitlistFull) {
+                badgeStatusText = '已滿';
+                badgeStatusColor = '#94a3b8';
+              } else if (isFull) {
+                badgeStatusText = '可候補';
+                badgeStatusColor = '#f59e0b';
+              } else {
+                badgeStatusText = '缺人';
+                badgeStatusColor = '#ef4444';
+              }
+            }
+
+            return (
+              <div key={party.id} className={`party-card clickable-card ${isHost ? 'hosted-party' : (isParticipant || isWaitlisted) ? 'joined-party' : ''}`} onClick={() => navigate(`/party/${party.id}`, { state: { party } })}>
+                <div className="party-card-header">
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {isHost && (
+                      <Star size={20} fill="#d8a7a7" color="#d8a7a7" style={{ marginRight: '4px' }} />
+                    )}
+                    <span className="party-type">{party.type}</span>
+                    <span className="party-level">{party.level}</span>
+                    {party.venueStatus === 'confirmed' && (
+                      <span className="party-level" style={{ backgroundColor: '#10b981', color: 'white', fontWeight: 'bold' }}>
+                        ✅ 場地已確認
+                      </span>
+                    )}
+                    {party.venueStatus === 'failed' && (
+                      <span className="party-level" style={{ backgroundColor: '#ef4444', color: 'white', fontWeight: 'bold' }}>
+                        ❌ 未借到場地
+                      </span>
+                    )}
+                    {party.genderLimit && party.genderLimit !== '不限' && (
+                      <span className="party-level">{party.genderLimit}</span>
+                    )}
+                    {badgeStatusText && (
+                      <span className="party-level" style={{ backgroundColor: badgeStatusColor, color: 'white', fontWeight: 'bold' }}>
+                        {badgeStatusText}
+                      </span>
+                    )}
+                  </div>
+                  {badgeStatusText !== '已關閉' && (
+                    <span className="party-status" style={{ color: statusColor }}>{statusText}</span>
+                  )}
+                </div>
+                <h3 className="party-title">{party.title}</h3>
+                <div className="party-info">
+                  <p><MapPin size={16} /> {party.location}</p>
+                  <p><Clock size={16} /> {party.time}</p>
+                </div>
+                <div className="party-card-footer">
+                  <span className="player-count">目前人數: {party.currentPlayers} / {party.maxPlayers}</span>
+                  <button className="btn-join" onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/party/${party.id}`, { state: { party } });
+                  }}>
+                    {isHost ? '管理' : isParticipant ? '已參加' : isWaitlisted ? '已候補' : isFull && isWaitlistFull ? '名額已滿' : isFull ? '申請候補' : '報名參加'}
+                  </button>
+                </div>
+              </div>
+            );
+          });
+          })()}
         </div>
       </main>
 
       <div className="fab-container">
-        {reputationScore <= 60 ? (
-          <button
-            className="fab-btn warning"
-            style={{
-              backgroundColor: '#d97706',
-              color: '#ffffff',
-              boxShadow: '0 4px 15px rgba(217, 119, 6, 0.4)'
-            }}
-            onClick={() => {
-              alert(`⚠️ 你的信譽分數過低（目前：${reputationScore}分），已遭到警告，目前無法發起新揪團。請保持良好參與紀錄以恢復信譽。`);
-            }}
-          >
-            <span className="fab-icon" style={{ marginRight: '6px' }}>⚠️</span>
-            信譽積分不足，無法開啟新揪團
-          </button>
-        ) : (
-          <button className="fab-btn" onClick={() => setIsModalOpen(true)}>
-            <span className="fab-icon">+</span>
-            發起揪團
-          </button>
-        )}
+        <button className="fab-btn" onClick={() => {
+          if (reputationScore <= 60) {
+            showAlert(`⚠️ 你的信譽分數過低（目前：${reputationScore}分），已遭到警告，目前無法發起新揪團。請保持良好參與紀錄以恢復信譽。`);
+            return;
+          }
+          setIsModalOpen(true);
+        }}>
+          <span className="fab-icon">+</span>
+          發起揪團
+        </button>
       </div>
 
       {isModalOpen && (
@@ -675,7 +933,7 @@ function Home() {
                       className="form-input custom-date-input" 
                       value={newParty.time} 
                       onChange={e => setNewParty({...newParty, time: e.target.value})} 
-                      min={new Date().toISOString().slice(0, 16)}
+                      min={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
                       required 
                     />
                   </div>
@@ -828,8 +1086,30 @@ function Home() {
           </div>
         </div>
       )}
+
+      {alertData.show && (
+        <div className="modal-overlay" onClick={closeAlert} style={{ zIndex: 99999 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '350px', textAlign: 'center', padding: '32px', borderRadius: '20px' }}>
+            <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: alertData.type === 'success' ? '#dcfce3' : '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              {alertData.type === 'success' ? <CheckCircle2 size={32} color="#22c55e" /> : <AlertTriangle size={32} color="#ef4444" />}
+            </div>
+            {alertData.type !== 'success' && <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '12px', color: '#1e293b' }}>提示</h3>}
+            <p style={{ fontSize: '16px', color: '#475569', marginBottom: alertData.type === 'success' ? '0' : '24px', lineHeight: '1.5' }}>{alertData.msg}</p>
+            {alertData.type !== 'success' && (
+              <button 
+                className="btn-primary" 
+                onClick={closeAlert}
+                style={{ width: '100%', padding: '12px', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold' }}
+              >
+                我知道了
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default Home;
+

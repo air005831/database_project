@@ -313,6 +313,12 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = UserProfileSerializer(user)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'], url_path='public-profile')
+    def public_profile(self, request, pk=None):
+        user = self.get_object()
+        serializer = UserProfileSerializer(user)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['get', 'put'], url_path='sport-levels')
     def sport_levels(self, request):
         if request.method == 'GET':

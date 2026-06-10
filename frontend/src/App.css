@@ -1493,3 +1493,21 @@
 
 
 
+
+
+/* --- Joined Party Styles --- */
+.party-card.joined-party {
+  background-color: #f0f9ff;
+  border-color: #bae6fd;
+  box-shadow: 0 4px 15px rgba(186, 230, 253, 0.4);
+}
+
+.party-card.joined-party:hover {
+  box-shadow: 0 10px 25px rgba(186, 230, 253, 0.6);
+}
+
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.9) translateY(10px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
