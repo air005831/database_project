@@ -450,25 +450,17 @@ class TaiwanRegion(models.Model):
         unique_together = ('city', 'district')
         managed = FORCE_SQLITE
 
+class FeedbackType(models.Model):
+    id = models.AutoField(primary_key=True, db_column='type_id')
+    name = models.CharField(max_length=100, unique=True)
+
+    class Meta:
+        db_table = 'feedback_types'
+        managed = FORCE_SQLITE
+
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 
-@receiver(post_save, sender=Announcement)
-def send_announcement_notifications(sender, instance, created, **kwargs):
-    if created:
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        users = User.objects.all()
-        notifications = []
-        for user in users:
-            notifications.append(
-                Notification(
-                    user=user,
-                    message=f"【系統公告】{instance.title}：{instance.content} (Ref: #{instance.id})"
-                )
-            )
-        if notifications:
-            Notification.objects.bulk_create(notifications)
 
 
 @receiver(post_delete, sender=Announcement)
@@ -476,3 +468,20 @@ def delete_announcement_notifications(sender, instance, **kwargs):
     Notification.objects.filter(
         message__contains=f"(Ref: #{instance.id})"
     ).delete()
+
+@receiver(post_delete, sender=Venue)
+def delete_orphaned_address(sender, instance, **kwargs):
+    if instance.address:
+        # Check if any other venues still reference this address
+        if not Venue.objects.filter(address=instance.address).exists():
+            instance.address.delete()
+
+@receiver(post_save, sender=User)
+def handle_user_reputation_change(sender, instance, **kwargs):
+    if instance.credit_point <= 40:
+        # Add to/update active blacklist
+        Blacklist.objects.update_or_create(user=instance, defaults={'removed_at': None})
+    else:
+        # Remove from active blacklist
+        Blacklist.objects.filter(user=instance, removed_at__isnull=True).update(removed_at=timezone.now())
+

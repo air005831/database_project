@@ -3,7 +3,7 @@ from .models import (
     User, Sport, UserSportLevel, Address, Facility, Venue, Court, GameMatch, 
     MatchParticipant, FavoriteGame, 
     PenaltyRule, Report, Blacklist, Notification, GameBulletin,
-    Feedback, Announcement, TaiwanRegion
+    Feedback, Announcement, TaiwanRegion, FeedbackType
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -835,3 +835,52 @@ class TaiwanRegionSerializer(serializers.ModelSerializer):
     class Meta:
         model = TaiwanRegion
         fields = '__all__'
+
+class FeedbackTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeedbackType
+        fields = '__all__'
+
+
+class UserMatchHistorySerializer(serializers.ModelSerializer):
+    sport_name = serializers.CharField(source='sport.chinese_name', read_only=True)
+    title = serializers.CharField(source='game_name', read_only=True)
+    status_chinese = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GameMatch
+        fields = ('id', 'game_name', 'title', 'sport_name', 'booking_date', 'time_slot', 'match_status', 'status_chinese')
+
+    def get_status_chinese(self, obj):
+        mapping = {
+            'recruiting': '募集中',
+            'full': '已額滿',
+            'closed': '已結束',
+            'started': '已開始',
+            'failed_to_start': '流局'
+        }
+        return mapping.get(obj.match_status, obj.match_status)
+
+
+class UserAdminDetailSerializer(serializers.ModelSerializer):
+    age = serializers.ReadOnlyField()
+    hosted_matches = serializers.SerializerMethodField()
+    joined_matches = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = (
+            'id', 'email', 'phone', 'name', 'birthday', 'age', 'credit_point', 
+            'role', 'line_id', 'instagram', 'gender', 'bio', 'avatar_url',
+            'hosted_matches', 'joined_matches'
+        )
+        read_only_fields = ('credit_point', 'role')
+
+    def get_hosted_matches(self, obj):
+        matches = obj.created_matches.all().order_by('-id')
+        return UserMatchHistorySerializer(matches, many=True).data
+
+    def get_joined_matches(self, obj):
+        matches = GameMatch.objects.filter(participants__user=obj).exclude(creator=obj).order_by('-id')
+        return UserMatchHistorySerializer(matches, many=True).data
+
