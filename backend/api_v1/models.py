@@ -392,7 +392,7 @@ class Blacklist(models.Model):
 #         db_table = 'user_availability'
 
 class FeedbackType(models.Model):
-    id = models.AutoField(primary_key=True, db_column='type_id')
+    id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, unique=True)
 
     def __str__(self):

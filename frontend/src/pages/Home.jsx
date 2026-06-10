@@ -257,10 +257,26 @@ function Home() {
           vMap[v.name] = v.id;
         });
 
+        // Clean up placeholder if active data exists
+        delete mergedRegions['未選擇'];
+
         setTaiwanRegions(mergedRegions);
         setRegions(mergedRegions);
         setVenueFacilities(mergedFacilities);
         setVenueMap(vMap);
+
+        // Pre-fill create party defaults using first available database records
+        const firstCity = Object.keys(mergedRegions)[0];
+        if (firstCity) {
+          const firstDist = Object.keys(mergedRegions[firstCity])[0] || '';
+          const firstVenue = (mergedRegions[firstCity][firstDist] || [])[0] || '';
+          setNewParty(prev => ({
+            ...prev,
+            city: firstCity,
+            district: firstDist,
+            venue: firstVenue
+          }));
+        }
       }
     });
   }, []);
@@ -464,6 +480,7 @@ function Home() {
         <div className="party-grid">
           {parties
             .filter(party => selectedFilterRegion === 'all' || (party.location && party.location.includes(selectedFilterRegion)))
+            .filter(party => selectedFilterDistrict === 'all' || (party.location && party.location.includes(selectedFilterDistrict)))
             .filter(party => selectedCategory === '全部' || party.type === selectedCategory)
             .sort((a, b) => {
               const currentUserId = localStorage.getItem('user_id');
