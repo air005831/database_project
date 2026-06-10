@@ -77,6 +77,7 @@ function Home() {
         
         if (userProfileResult) {
           setUserProfile(userProfileResult);
+          setReputationScore(userProfileResult.credit_point ?? 100);
         }
 
         const venuesList = Array.isArray(venuesResult) ? venuesResult : (venuesResult.results || []);
@@ -249,7 +250,25 @@ function Home() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
-  const [feedback, setFeedback] = useState({ type: '建議', content: '' });
+  const [feedbackTypes, setFeedbackTypes] = useState([
+    { id: 1, name: 'Bug 回報 (系統出錯)' },
+    { id: 2, name: '功能建議 (想要更多)' },
+    { id: 3, name: '場地/活動問題' },
+    { id: 4, name: '其他' }
+  ]);
+  const [feedback, setFeedback] = useState({ type: 'Bug 回報 (系統出錯)', content: '' });
+
+  useEffect(() => {
+    adminApi.getFeedbackTypes()
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data.results || []);
+        if (list.length > 0) {
+          setFeedbackTypes(list);
+          setFeedback(prev => ({ ...prev, type: list[0].name }));
+        }
+      })
+      .catch(err => console.error('Failed to load feedback types:', err));
+  }, []);
   const [selectedFilterRegion, setSelectedFilterRegion] = useState('all');
   const [selectedFilterDistrict, setSelectedFilterDistrict] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('全部');
@@ -280,7 +299,7 @@ function Home() {
       await adminApi.submitFeedback(feedback);
       alert('感謝您的回饋！管理員將會盡快查看。');
       setIsFeedbackOpen(false);
-      setFeedback({ type: '建議', content: '' });
+      setFeedback({ type: feedbackTypes[0]?.name || 'Bug 回報 (系統出錯)', content: '' });
     } catch (error) {
       console.error('Feedback error:', error);
       alert('送出失敗，請稍後再試。');
@@ -575,20 +594,38 @@ function Home() {
               <div className="notification-dropdown">
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', fontWeight: '700', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   通知中心
-                  <span 
-                    style={{ fontSize: '12px', color: '#7995a5', cursor: 'pointer', fontWeight: 'normal' }}
-                    onClick={async () => {
-                      const unreadNotifs = notifications.filter(n => !n.read);
-                      if (unreadNotifs.length > 0) {
-                        try {
-                           await Promise.all(unreadNotifs.map(n => notificationsApi.markAsRead(n.id)));
-                        } catch (e) { console.error('Failed to mark all as read', e); }
-                      }
-                      setNotifications(notifications.map(n => ({...n, read: true})));
-                    }}
-                  >
-                    全部標示為已讀
-                  </span>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <span 
+                      style={{ fontSize: '12px', color: '#7995a5', cursor: 'pointer', fontWeight: 'normal' }}
+                      onClick={async () => {
+                        const unreadNotifs = notifications.filter(n => !n.read);
+                        if (unreadNotifs.length > 0) {
+                          try {
+                             await Promise.all(unreadNotifs.map(n => notificationsApi.markAsRead(n.id)));
+                          } catch (e) { console.error('Failed to mark all as read', e); }
+                        }
+                        setNotifications(notifications.map(n => ({...n, read: true})));
+                      }}
+                    >
+                      全部標示為已讀
+                    </span>
+                    <span 
+                      style={{ fontSize: '12px', color: '#ef4444', cursor: 'pointer', fontWeight: 'normal' }}
+                      onClick={async () => {
+                        if (window.confirm('確定要刪除所有已讀通知嗎？')) {
+                          try {
+                            await notificationsApi.deleteAllNotifications();
+                            setNotifications(notifications.filter(n => !n.read));
+                          } catch (e) {
+                            console.error('Failed to delete read notifications', e);
+                            alert('刪除通知失敗，請稍後再試。');
+                          }
+                        }
+                      }}
+                    >
+                      一鍵刪除
+                    </span>
+                  </div>
                 </div>
                 <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
                   {notifications.length > 0 ? (
@@ -606,38 +643,43 @@ function Home() {
                           
                           // 處理點擊通知以彈窗展開
                           if (n.text) {
-                            if (n.text.includes('【系統公告】')) {
-                              const refMatch = n.text.match(/\(Ref:\s*#(\d+)\)/);
-                              let title = '系統公告';
-                              let content = n.text.replace('【系統公告】', '');
-                              let photos = [];
-                              
-                              if (refMatch) {
-                                const announcementId = Number(refMatch[1]);
-                                const found = systemAnnouncements.find(a => a.id === announcementId);
-                                if (found) {
-                                  title = found.title;
+                            const refMatch = n.text.match(/\(Ref:\s*#(\d+)\)/);
+                            let title = '系統通知';
+                            let content = n.text;
+                            let photos = [];
+                            
+                            if (refMatch) {
+                              const announcementId = Number(refMatch[1]);
+                              const found = systemAnnouncements.find(a => a.id === announcementId);
+                              if (found) {
+                                title = found.title.replace(/【通知 - 房主】|【通知 - 房間所有人】|【公告】/g, '').trim();
+                                photos = found.photo || [];
+                                if (!n.text.includes('給【')) {
                                   content = found.content;
-                                  photos = found.photo || [];
                                 }
-                              } else {
+                                
+                                // 1. 清理 (Ref: #...) 標記與圖片區塊 [Photos]
+                                content = content.replace(/\(Ref:\s*#\d+\)/g, '').split('\n\n[Photos]')[0].trim();
+                                
+                                // 2. 清理重複的標題與冒號
+                                const escapedTitle = title.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                                const titleRegex = new RegExp(escapedTitle + '\\s*[:：]\\s*', 'g');
+                                content = content.replace(titleRegex, '').trim();
+                              }
+                            } else {
+                              if (n.text.includes('【系統公告】')) {
                                 const cleanText = n.text.replace('【系統公告】', '');
                                 const colonIndex = cleanText.indexOf('：');
                                 if (colonIndex !== -1) {
                                   title = cleanText.substring(0, colonIndex).trim();
                                   content = cleanText.substring(colonIndex + 1).trim();
+                                } else {
+                                  content = cleanText;
                                 }
                               }
-                              setSelectedAnnouncement({ title, content, time: n.time, photos });
-                            } else {
-                              // 其他所有通知也支援以「系統通知」彈窗展開，方便查閱完整回覆
-                              setSelectedAnnouncement({ 
-                                title: '系統通知', 
-                                content: n.text, 
-                                time: n.time, 
-                                photos: [] 
-                              });
                             }
+                            
+                            setSelectedAnnouncement({ title, content, time: n.time, photos });
                           }
                         }}
                       >
@@ -955,16 +997,27 @@ function Home() {
 
       {/* 右下角浮動發起按鈕 */}
       <div className="fab-container">
-        <button className="fab-btn" onClick={() => {
-          if (reputationScore <= 60) {
-            alert(`⚠️ 你的信譽分數過低（目前：${reputationScore}分），已遭到警告，目前無法發起新揪團。請保持良好參與紀錄以恢復信譽。`);
-            return;
-          }
-          setIsModalOpen(true);
-        }}>
-          <span className="fab-icon">+</span>
-          發起揪團
-        </button>
+        {reputationScore <= 60 ? (
+          <button
+            className="fab-btn warning"
+            style={{
+              backgroundColor: '#d97706',
+              color: '#ffffff',
+              boxShadow: '0 4px 15px rgba(217, 119, 6, 0.4)'
+            }}
+            onClick={() => {
+              alert(`⚠️ 你的信譽分數過低（目前：${reputationScore}分），已遭到警告，目前無法發起新揪團。請保持良好參與紀錄以恢復信譽。`);
+            }}
+          >
+            <span className="fab-icon" style={{ marginRight: '6px' }}>⚠️</span>
+            信譽積分不足，無法開啟新揪團
+          </button>
+        ) : (
+          <button className="fab-btn" onClick={() => setIsModalOpen(true)}>
+            <span className="fab-icon">+</span>
+            發起揪團
+          </button>
+        )}
       </div>
 
       {/* 發起揪團 Modal */}
@@ -1149,10 +1202,9 @@ function Home() {
               <div className="form-group">
                 <label className="form-label">回饋類型</label>
                 <select className="form-input" value={feedback.type} onChange={e => setFeedback({...feedback, type: e.target.value})}>
-                  <option value="建議">功能建議</option>
-                  <option value="錯誤">問題回報 (Bug)</option>
-                  <option value="場地">場地相關</option>
-                  <option value="其他">其他</option>
+                  {feedbackTypes.map(t => (
+                    <option key={t.id} value={t.name}>{t.name}</option>
+                  ))}
                 </select>
               </div>
               <div className="form-group">
