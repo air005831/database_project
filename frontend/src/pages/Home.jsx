@@ -115,8 +115,8 @@ function Home() {
             venueDict[v.id] = {
               id: v.id,
               name: v.name,
-              city: v.address_detail?.city || '未分類縣市',
-              district: v.address_detail?.district || '未分類區域',
+              city: v.city || v.address_detail?.city || '其他',
+              district: v.district || v.address_detail?.district || '其他',
               facilities: v.facilities || [],
               sports: new Set()
             };
@@ -213,13 +213,23 @@ function Home() {
   const handleCityChange = (e) => {
     const city = e.target.value;
     const firstDist = Object.keys(taiwanRegions[city] || {})[0] || '';
-    const firstVenue = (taiwanRegions[city]?.[firstDist] || [])[0] || '其他';
+    const filtered = allVenues.filter(v => 
+      v.city === city && 
+      v.district === firstDist && 
+      (v.sports || []).includes(newParty.type)
+    );
+    const firstVenue = filtered[0]?.name || '';
     setNewParty({ ...newParty, city, district: firstDist, venue: firstVenue });
   };
 
   const handleDistrictChange = (e) => {
     const district = e.target.value;
-    const firstVenue = (taiwanRegions[newParty.city]?.[district] || [])[0] || '其他';
+    const filtered = allVenues.filter(v => 
+      v.city === newParty.city && 
+      v.district === district && 
+      (v.sports || []).includes(newParty.type)
+    );
+    const firstVenue = filtered[0]?.name || '';
     setNewParty({ ...newParty, district, venue: firstVenue });
   };
 
@@ -287,6 +297,22 @@ function Home() {
       setFeedbackTypes(list);
     });
   }, []);
+
+  useEffect(() => {
+    if (allVenues.length > 0) {
+      const filtered = allVenues.filter(v => 
+        v.city === newParty.city && 
+        v.district === newParty.district && 
+        (v.sports || []).includes(newParty.type)
+      );
+      
+      const hasCurrentVenue = filtered.some(v => v.name === newParty.venue);
+      if (!hasCurrentVenue) {
+        const firstVenue = filtered[0]?.name || '';
+        setNewParty(prev => ({ ...prev, venue: firstVenue }));
+      }
+    }
+  }, [newParty.type, newParty.city, newParty.district, allVenues]);
 
   const renderModalContent = () => {
     if (!selectedAnnouncement) return null;
@@ -687,10 +713,25 @@ function Home() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">地點 (場館/球場)</label>
-                    <select className="form-input" value={newParty.venue} onChange={e => setNewParty({...newParty, venue: e.target.value})}>
-                      {(taiwanRegions[newParty.city]?.[newParty.district] || []).map(v => (
-                        <option key={v} value={v}>{v}</option>
-                      ))}
+                    <select 
+                      className="form-input" 
+                      value={newParty.venue} 
+                      onChange={e => setNewParty({...newParty, venue: e.target.value})}
+                      required
+                    >
+                      {(() => {
+                        const filtered = allVenues.filter(v => 
+                          v.city === newParty.city && 
+                          v.district === newParty.district && 
+                          (v.sports || []).includes(newParty.type)
+                        );
+                        if (filtered.length === 0) {
+                          return <option value="">此區域無提供該運動之場地</option>;
+                        }
+                        return filtered.map(v => (
+                          <option key={v.id} value={v.name}>{v.name}</option>
+                        ));
+                      })()}
                     </select>
                   </div>
                   <div className="form-group">
