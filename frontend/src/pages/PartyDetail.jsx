@@ -25,7 +25,7 @@ function PartyDetail() {
 	const { id } = useParams();
 	const location = useLocation();
 	const navigate = useNavigate();
-	const { parties, connectSSE, lastUpdate } = useGameStore();
+	const { parties, connectSSE, lastUpdate, updateParty } = useGameStore();
 
 	const defaultParty = useMemo(
 		() => ({
@@ -62,6 +62,14 @@ function PartyDetail() {
 	const initialParty = useMemo(() => {
 		const partyFromState = location.state?.party || parties.find(p => String(p.id) === String(id)) || defaultParty;
 		const processedParty = { ...partyFromState };
+
+		// Ensure key display fields are present
+		processedParty.title = processedParty.game_name || processedParty.title || defaultParty.title;
+		processedParty.time = processedParty.time_slot || processedParty.time || defaultParty.time;
+		processedParty.currentPlayers = processedParty.current_players ?? processedParty.currentPlayers ?? defaultParty.currentPlayers;
+		processedParty.maxPlayers = processedParty.most_players ?? processedParty.maxPlayers ?? defaultParty.maxPlayers;
+		processedParty.currentWaitlist = processedParty.current_waitlist ?? processedParty.currentWaitlist ?? defaultParty.currentWaitlist;
+		processedParty.maxWaitlist = processedParty.max_waitlist ?? processedParty.maxWaitlist ?? defaultParty.maxWaitlist;
 
 		// Robust venue status determination to prevent asking for confirmation again
 		let currentVenueStatus = processedParty.venueStatus;
@@ -155,14 +163,21 @@ function PartyDetail() {
 				setParty((prev) => ({
 					...prev,
 					...freshData,
+					title: freshData.game_name || freshData.title || prev.title,
+					type: freshData.sport_type || freshData.type || prev.type,
+					time: freshData.time_slot || freshData.time || prev.time,
+					location: freshData.venue_name || freshData.location || prev.location,
 					currentPlayers: freshData.current_players ?? freshData.currentPlayers ?? prev.currentPlayers,
 					maxPlayers: freshData.most_players ?? freshData.maxPlayers ?? prev.maxPlayers,
+					currentWaitlist: freshData.current_waitlist ?? freshData.currentWaitlist ?? prev.currentWaitlist,
+					maxWaitlist: freshData.max_waitlist ?? freshData.maxWaitlist ?? prev.maxWaitlist,
 					level: rawLevel,
 					venueStatus,
 					booking_status: freshData.booking_status,
 					game_note: freshData.game_note,
 					description: freshData.game_note || freshData.description || prev.description,
 				}));
+				updateParty(freshData);
 			}
 		} catch (err) {
 			console.error("Failed to fetch fresh party data:", err);
@@ -369,7 +384,22 @@ function PartyDetail() {
 				party.match_status !== updatedInStore.match_status ||
 				party.booking_status !== updatedInStore.booking_status;
 			
+			console.log('[PartyDetail] Store updated. Checking changes for party:', id, {
+				local: {
+					currentPlayers: party.currentPlayers,
+					match_status: party.match_status,
+					booking_status: party.booking_status
+				},
+				store: {
+					currentPlayers: updatedInStore.currentPlayers,
+					match_status: updatedInStore.match_status,
+					booking_status: updatedInStore.booking_status
+				},
+				hasChanged
+			});
+			
 			if (hasChanged) {
+				console.log('[PartyDetail] Change detected, refetching fresh party details from backend...');
 				fetchPartyDetail(false);
 			}
 		}
@@ -419,6 +449,7 @@ function PartyDetail() {
 					waitlist_ids: fresh.waitlist_ids ?? prev.waitlist_ids,
 					match_status: fresh.match_status ?? prev.match_status,
 				}));
+				updateParty(fresh);
 			}
 		} catch (err) {
 			console.error('Refresh party data error:', err);
@@ -709,11 +740,15 @@ function PartyDetail() {
 													"Update venue status success:",
 													updatedParty,
 												);
-												setParty((prev) => ({
-													...prev,
-													...updatedParty,
-													venueStatus: "confirmed",
-												}));
+												setParty((prev) => {
+													const next = {
+														...prev,
+														...updatedParty,
+														venueStatus: "confirmed",
+													};
+													updateParty(next);
+													return next;
+												});
 												showToast("已通知所有成員：場地確認成功！");
 											} catch (e) {
 												console.error("Update venue status failed:", e);
@@ -741,11 +776,15 @@ function PartyDetail() {
 													"Update venue status success (failed case):",
 													updatedParty,
 												);
-												setParty((prev) => ({
-													...prev,
-													...updatedParty,
-													venueStatus: "failed",
-												}));
+												setParty((prev) => {
+													const next = {
+														...prev,
+														...updatedParty,
+														venueStatus: "failed",
+													};
+													updateParty(next);
+													return next;
+												});
 												showToast("已通知所有成員：活動取消！");
 											} catch (e) {
 												console.error("Update venue status failed:", e);
