@@ -31,6 +31,7 @@ router.register('admin/feedbacks', FeedbackViewSet, basename='admin-feedback')
 router.register('feedback-types', FeedbackTypeViewSet, basename='feedback-type')
 
 urlpatterns = [
+    path('games/stream/', stream_game_updates, name='games-stream'),
     path('', include(router.urls)),
 
     # Custom non-viewset endpoints with optional trailing slash support
@@ -47,5 +48,4 @@ urlpatterns = [
     re_path(r'^admin/demo/weather/?$', DemoWeatherView.as_view(), name='admin-demo-weather'),
     re_path(r'^upload/?$', upload_image, name='upload-image'),
     re_path(r'^admin/feedbacks/(?P<pk>\d+)/handle/?$', FeedbackViewSet.as_view({'put': 'handle_feedback'}), name='admin-feedback-handle'),
-    path('games/stream/', stream_game_updates, name='games-stream'),
 ]

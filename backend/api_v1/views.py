@@ -2082,26 +2082,35 @@ def trigger_game_update(match_id=None):
             for q in sse_queues:
                 q.put(match_id)
                 
-    transaction.on_commit(do_put)
+    try:
+        connection = transaction.get_connection()
+        if connection.in_atomic_block:
+            transaction.on_commit(do_put)
+        else:
+            do_put()
+    except Exception:
+        do_put()
 
 def stream_game_updates(request):
     """
     Event-driven SSE endpoint: uses a pub-sub queue for instant and partial updates.
     """
+    print("[SSE] New client connection request received on endpoint.")
     def event_stream():
         # 為此連線建立專屬佇列
         q = queue.Queue()
         with sse_lock:
             sse_queues.append(q)
+        print(f"[SSE] Client connected. Active connection queues: {len(sse_queues)}")
             
         try:
             # 連線建立時先推送一次完整列表
             q.put(None) 
             
             while True:
-                # 等待佇列信號 (30 秒超時作為 Keep-alive)
+                # 等待佇列信號 (3 秒超時作為 Keep-alive)
                 try:
-                    target_match_id = q.get(timeout=30)
+                    target_match_id = q.get(timeout=3)
                 except queue.Empty:
                     # Keep-alive: 發送一個空的註解或重複發送最近狀態
                     yield ": keep-alive\n\n"
@@ -2135,11 +2144,13 @@ def stream_game_updates(request):
                     yield f"data: [{{\"id\": {target_match_id}, \"deleted\": true}}]\n\n"
                 
         except Exception as e:
+            print(f"[SSE] Exception encountered in stream: {e}")
             yield f"data: {{\"error\": \"{str(e)}\"}}\n\n"
         finally:
             with sse_lock:
                 if q in sse_queues:
                     sse_queues.remove(q)
+            print(f"[SSE] Client disconnected. Remaining active connection queues: {len(sse_queues)}")
                 
     response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
