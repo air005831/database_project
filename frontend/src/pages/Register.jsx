@@ -52,7 +52,20 @@ function Register() {
       navigate('/setup-profile');
     } catch (error) {
       console.error('Register error:', error);
-      alert('註冊失敗，請確認信箱是否已被使用或伺服器狀態！');
+      let errMsg = '請確認網路連線或伺服器狀態！';
+      if (error.response?.data?.detail) {
+        const detail = error.response.data.detail;
+        if (detail === 'Email already exists.') {
+          errMsg = '此電子信箱已被註冊使用！';
+        } else if (detail === 'Invalid email format.') {
+          errMsg = '電子信箱格式錯誤！';
+        } else if (detail === 'name, email and password are required.') {
+          errMsg = '暱稱、電子信箱與密碼皆為必填！';
+        } else {
+          errMsg = detail;
+        }
+      }
+      alert(`註冊失敗：${errMsg}`);
     } finally {
       setIsLoading(false);
     }

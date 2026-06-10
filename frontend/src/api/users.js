@@ -24,6 +24,24 @@ const usersApi = {
    */
   getAllUsers: () => {
     return axiosClient.get('/users/');
+  },
+
+  /**
+   * 取得特定使用者詳細資訊 (限 Admin)
+   * @param {number|string} userId
+   * @returns {Promise}
+   */
+  getUserDetail: (userId) => {
+    return axiosClient.get(`/users/${userId}`);
+  },
+
+  /**
+   * 搜尋使用者 (限 Admin)
+   * @param {string} query
+   * @returns {Promise}
+   */
+  searchUsers: (query) => {
+    return axiosClient.get(`/users/?search=${encodeURIComponent(query)}`);
   }
 };
 
