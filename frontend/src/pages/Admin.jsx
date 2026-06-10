@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, MapPinned, Bell, Plus, Trash2, Pencil, ArrowLeft, TrendingUp, BarChart3, MessageSquarePlus, MessageSquareText, Wrench, RefreshCcw, UserCircle, CloudRain, CheckCircle, XCircle, Search, Filter, Users, ShieldBan, Eye, ChevronRight } from 'lucide-react';
 import adminApi from '../api/admin';
 import venuesApi from '../api/venues';
@@ -24,6 +24,24 @@ const getSportBadgeStyle = (sportName) => {
       return { backgroundColor: '#f1f5f9', color: '#475569', borderColor: '#e2e8f0' };
   }
 };
+
+const getMatchStatusStyle = (status) => {
+  switch (status) {
+    case 'recruiting':
+      return { backgroundColor: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' };
+    case 'full':
+      return { backgroundColor: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' };
+    case 'started':
+      return { backgroundColor: '#ecfdf5', color: '#047857', borderColor: '#a7f3d0' };
+    case 'closed':
+      return { backgroundColor: '#f1f5f9', color: '#475569', borderColor: '#e2e8f0' };
+    case 'failed_to_start':
+      return { backgroundColor: '#fef2f2', color: '#b91c1c', borderColor: '#fecaca' };
+    default:
+      return { backgroundColor: '#f8fafc', color: '#64748b', borderColor: '#cbd5e1' };
+  }
+};
+
 
 const TAIWAN_CITIES_DISTRICTS = {
   '桃園市': [
@@ -51,7 +69,8 @@ const TAIWAN_CITIES_DISTRICTS = {
 
 function Admin() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(location.state?.tab || 'dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 1024);
   useEffect(() => {
@@ -79,7 +98,16 @@ function Admin() {
   });
 
   // 使用者與篩選狀態 (已提升宣告位置，防止 Temporal Dead Zone 錯誤)
-  const [newVenue, setNewVenue] = useState({ name: '', city: '桃園市', district: '桃園區', street_line: '', facilities: [] });
+  const [newVenue, setNewVenue] = useState({ 
+    name: '', 
+    city: '桃園市', 
+    district: '桃園區', 
+    street_line: '', 
+    facilities: [], 
+    weekdays_hours: '08:00-22:00', 
+    weekends_hours: '08:00-22:00',
+    closed_days: []
+  });
   const [regionsMap, setRegionsMap] = useState({});
   const citiesToUse = Object.keys(regionsMap).length > 0 ? regionsMap : TAIWAN_CITIES_DISTRICTS;
   const [courtCounts, setCourtCounts] = useState([{ sport_id: '', count: 1 }]);
@@ -552,14 +580,26 @@ function Admin() {
       street_line: venue.address,
       sport_id: sportObj ? String(sportObj.id) : '',
       court_count: venue.court_count || 1,
-      facilities: venue.facilities || []
+      facilities: venue.facilities || [],
+      weekdays_hours: venue.opening_hours?.weekdays || '08:00-22:00',
+      weekends_hours: venue.opening_hours?.weekends || '08:00-22:00',
+      closed_days: venue.opening_hours?.closed_days || []
     });
     document.getElementById('add-venue-form')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleCancelEdit = () => {
     setEditingVenueId(null);
-    setNewVenue({ name: '', city: '桃園市', district: '桃園區', street_line: '', facilities: [] });
+    setNewVenue({ 
+      name: '', 
+      city: '桃園市', 
+      district: '桃園區', 
+      street_line: '', 
+      facilities: [],
+      weekdays_hours: '08:00-22:00',
+      weekends_hours: '08:00-22:00',
+      closed_days: []
+    });
     setCourtCounts([{ sport_id: '', count: 1 }]);
   };
 
@@ -589,7 +629,11 @@ function Admin() {
       district: newVenue.district,
       street_line: newVenue.street_line,
       court_counts: activeCourtCounts,
-      opening_hours: { weekdays: "08:00-22:00", weekends: "08:00-22:00" },
+      opening_hours: { 
+        weekdays: newVenue.weekdays_hours || "08:00-22:00", 
+        weekends: newVenue.weekends_hours || "08:00-22:00",
+        closed_days: newVenue.closed_days || []
+      },
       types: "indoor",
       latitude: 25.0116,
       longitude: 121.4617,
@@ -608,12 +652,22 @@ function Admin() {
           address: response.address_detail?.street_line || newVenue.street_line,
           facilities: response.facilities && response.facilities.length > 0 ? response.facilities : newVenue.facilities,
           court_count: response.court_count !== undefined ? response.court_count : 0,
-          sports: response.sports || []
+          sports: response.sports || [],
+          opening_hours: response.opening_hours || payload.opening_hours
         };
         setVenues(venues.map(v => v.id === editingVenueId ? updatedV : v));
         setAllVenuesForFiltering(allVenuesForFiltering.map(v => v.id === editingVenueId ? updatedV : v));
         setEditingVenueId(null);
-        setNewVenue({ name: '', city: '桃園市', district: '桃園區', street_line: '', facilities: [] });
+        setNewVenue({ 
+          name: '', 
+          city: '桃園市', 
+          district: '桃園區', 
+          street_line: '', 
+          facilities: [],
+          weekdays_hours: '08:00-22:00',
+          weekends_hours: '08:00-22:00',
+          closed_days: []
+        });
         setCourtCounts([{ sport_id: '', count: 1 }]);
         alert('場地已更新完成！');
       } else {
@@ -627,11 +681,21 @@ function Admin() {
           address: response.address_detail?.street_line || newVenue.street_line,
           facilities: response.facilities && response.facilities.length > 0 ? response.facilities : newVenue.facilities,
           court_count: response.court_count !== undefined ? response.court_count : activeCourtCounts.reduce((sum, item) => sum + item.count, 0),
-          sports: response.sports || activeCourtCounts.map(item => sportsList.find(s => s.id === item.sport_id)?.name).filter(Boolean)
+          sports: response.sports || activeCourtCounts.map(item => sportsList.find(s => s.id === item.sport_id)?.name).filter(Boolean),
+          opening_hours: response.opening_hours || payload.opening_hours
         };
         setVenues([...venues, newV]);
         setAllVenuesForFiltering([...allVenuesForFiltering, newV]);
-        setNewVenue({ name: '', city: '桃園市', district: '桃園區', street_line: '', facilities: [] });
+        setNewVenue({ 
+          name: '', 
+          city: '桃園市', 
+          district: '桃園區', 
+          street_line: '', 
+          facilities: [],
+          weekdays_hours: '08:00-22:00',
+          weekends_hours: '08:00-22:00',
+          closed_days: []
+        });
         setCourtCounts([{ sport_id: '', count: 1 }]);
         alert('場地已新增至後端並自動生成球場！');
       }
@@ -1195,7 +1259,19 @@ function Admin() {
                   {venues.map(v => (
                     <tr key={v.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                       <td style={{ padding: '16px', fontWeight: '700' }}>{v.name}</td>
-                      <td style={{ padding: '16px' }}>{v.address}</td>
+                      <td style={{ padding: '16px' }}>
+                        <div>{v.address}</div>
+                        {v.opening_hours && (
+                          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                            🕒 平日: {v.opening_hours.weekdays || '無'} | 假日: {v.opening_hours.weekends || '無'}
+                            {v.opening_hours.closed_days && v.opening_hours.closed_days.length > 0 && (
+                              <span style={{ color: '#ef4444', marginLeft: '6px', fontWeight: 'bold' }}>
+                                ({v.opening_hours.closed_days.join('、')}公休)
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ padding: '16px', fontWeight: '600' }}>
                         {v.court_count ? `${v.court_count} 個球場` : '0 個球場'}
                       </td>
@@ -1272,6 +1348,40 @@ function Admin() {
                 <div className="form-group">
                   <label className="form-label">詳細地址</label>
                   <input required type="text" className="form-input" placeholder="例如：雙十路二段100號" value={newVenue.street_line} onChange={e => setNewVenue({...newVenue, street_line: e.target.value})} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">營業時間 (平日)</label>
+                  <input required type="text" className="form-input" placeholder="例如：08:00-22:00" value={newVenue.weekdays_hours || ''} onChange={e => setNewVenue({...newVenue, weekdays_hours: e.target.value})} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">營業時間 (假日)</label>
+                  <input required type="text" className="form-input" placeholder="例如：08:00-22:00" value={newVenue.weekends_hours || ''} onChange={e => setNewVenue({...newVenue, weekends_hours: e.target.value})} />
+                </div>
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label className="form-label" style={{ fontWeight: '700' }}>公休日 (可複選)</label>
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '8px' }}>
+                    {['週一', '週二', '週三', '週四', '週五', '週六', '週日'].map(day => {
+                      const isClosed = newVenue.closed_days?.includes(day);
+                      return (
+                        <label key={day} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '14px', cursor: 'pointer' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={isClosed} 
+                            onChange={e => {
+                              const checked = e.target.checked;
+                              const currentClosed = newVenue.closed_days || [];
+                              if (checked) {
+                                setNewVenue({ ...newVenue, closed_days: [...currentClosed, day] });
+                              } else {
+                                setNewVenue({ ...newVenue, closed_days: currentClosed.filter(d => d !== day) });
+                              }
+                            }} 
+                          />
+                          {day}
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
                 {!editingVenueId && (
                   <div className="form-group" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1959,7 +2069,7 @@ function Admin() {
                               {(umSelectedUserDetail?.hosted_matches || []).map((m) => (
                                 <div
                                   key={m.id}
-                                  onClick={() => navigate(`/party/${m.id}`)}
+                                  onClick={() => navigate(`/party/${m.id}`, { state: { fromAdmin: true } })}
                                   style={{
                                     padding: '10px 12px',
                                     borderRadius: '8px',
@@ -1986,6 +2096,15 @@ function Admin() {
                                     <span style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                       {m.title || m.game_name}
                                     </span>
+                                    <span style={{
+                                      fontSize: '11px',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      border: '1px solid',
+                                      ...getMatchStatusStyle(m.match_status)
+                                    }}>
+                                      {m.status_chinese || m.match_status}
+                                    </span>
                                   </div>
                                   <div style={{ fontSize: '11px', color: '#64748b', flexShrink: 0 }}>
                                     {m.booking_date} {m.time_slot}
@@ -2009,7 +2128,7 @@ function Admin() {
                               {(umSelectedUserDetail?.joined_matches || []).map((m) => (
                                 <div
                                   key={m.id}
-                                  onClick={() => navigate(`/party/${m.id}`)}
+                                  onClick={() => navigate(`/party/${m.id}`, { state: { fromAdmin: true } })}
                                   style={{
                                     padding: '10px 12px',
                                     borderRadius: '8px',
@@ -2035,6 +2154,15 @@ function Admin() {
                                     </span>
                                     <span style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                       {m.title || m.game_name}
+                                    </span>
+                                    <span style={{
+                                      fontSize: '11px',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      border: '1px solid',
+                                      ...getMatchStatusStyle(m.match_status)
+                                    }}>
+                                      {m.status_chinese || m.match_status}
                                     </span>
                                   </div>
                                   <div style={{ fontSize: '11px', color: '#64748b', flexShrink: 0 }}>
@@ -2675,6 +2803,16 @@ function Admin() {
                   <span style={{ fontSize: '12px', fontWeight: '700', color: '#0284c7' }}>{v.court_count} 個球場</span>
                 </div>
                 <p className="admin-venue-card-address">📍 {v.address}</p>
+                {v.opening_hours && (
+                  <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 8px 0', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                    🕒 平日: {v.opening_hours.weekdays || '無'} | 假日: {v.opening_hours.weekends || '無'}
+                    {v.opening_hours.closed_days && v.opening_hours.closed_days.length > 0 && (
+                      <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
+                        ({v.opening_hours.closed_days.join('、')}公休)
+                      </span>
+                    )}
+                  </p>
+                )}
                 <div className="admin-venue-card-details">
                   <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                     {v.facilities.map((f, i) => (
@@ -2749,6 +2887,40 @@ function Admin() {
             <div className="form-group">
               <label className="form-label">詳細地址</label>
               <input required type="text" className="form-input" placeholder="例如：雙十路二段100號" value={newVenue.street_line} onChange={e => setNewVenue({...newVenue, street_line: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">營業時間 (平日)</label>
+              <input required type="text" className="form-input" placeholder="例如：08:00-22:00" value={newVenue.weekdays_hours || ''} onChange={e => setNewVenue({...newVenue, weekdays_hours: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">營業時間 (假日)</label>
+              <input required type="text" className="form-input" placeholder="例如：08:00-22:00" value={newVenue.weekends_hours || ''} onChange={e => setNewVenue({...newVenue, weekends_hours: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: '700' }}>公休日 (可複選)</label>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '6px' }}>
+                {['週一', '週二', '週三', '週四', '週五', '週六', '週日'].map(day => {
+                  const isClosed = newVenue.closed_days?.includes(day);
+                  return (
+                    <label key={day} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={isClosed} 
+                        onChange={e => {
+                          const checked = e.target.checked;
+                          const currentClosed = newVenue.closed_days || [];
+                          if (checked) {
+                            setNewVenue({ ...newVenue, closed_days: [...currentClosed, day] });
+                          } else {
+                            setNewVenue({ ...newVenue, closed_days: currentClosed.filter(d => d !== day) });
+                          }
+                        }} 
+                      />
+                      {day}
+                    </label>
+                  );
+                })}
+              </div>
             </div>
             {!editingVenueId && (
               <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -3389,10 +3561,11 @@ function Admin() {
                       <div style={{ fontSize: '12px', fontWeight: '800', color: '#64748b', marginBottom: '6px' }}>創立的房間 ({umSelectedUserDetail?.hosted_matches?.length || 0})</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto' }}>
                         {(umSelectedUserDetail?.hosted_matches || []).map((m) => (
-                          <div key={m.id} onClick={() => navigate(`/party/${m.id}`)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #f1f5f9', backgroundColor: '#faf5ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div key={m.id} onClick={() => navigate(`/party/${m.id}`, { state: { fromAdmin: true } })} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #f1f5f9', backgroundColor: '#faf5ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
                               <span style={{ fontSize: '10px', padding: '1px 4px', borderRadius: '3px', border: '1px solid', ...getSportBadgeStyle(m.sport_name) }}>{m.sport_name}</span>
                               <span style={{ fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title || m.game_name}</span>
+                              <span style={{ fontSize: '10px', padding: '1px 4px', borderRadius: '3px', border: '1px solid', ...getMatchStatusStyle(m.match_status) }}>{m.status_chinese || m.match_status}</span>
                             </div>
                             <span style={{ fontSize: '10px', color: '#94a3b8' }}>{m.booking_date}</span>
                           </div>
@@ -3403,10 +3576,11 @@ function Admin() {
                       <div style={{ fontSize: '12px', fontWeight: '800', color: '#64748b', marginBottom: '6px' }}>參加的房間 ({umSelectedUserDetail?.joined_matches?.length || 0})</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto' }}>
                         {(umSelectedUserDetail?.joined_matches || []).map((m) => (
-                          <div key={m.id} onClick={() => navigate(`/party/${m.id}`)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #f1f5f9', backgroundColor: '#f0fdf4', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div key={m.id} onClick={() => navigate(`/party/${m.id}`, { state: { fromAdmin: true } })} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #f1f5f9', backgroundColor: '#f0fdf4', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
                               <span style={{ fontSize: '10px', padding: '1px 4px', borderRadius: '3px', border: '1px solid', ...getSportBadgeStyle(m.sport_name) }}>{m.sport_name}</span>
                               <span style={{ fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title || m.game_name}</span>
+                              <span style={{ fontSize: '10px', padding: '1px 4px', borderRadius: '3px', border: '1px solid', ...getMatchStatusStyle(m.match_status) }}>{m.status_chinese || m.match_status}</span>
                             </div>
                             <span style={{ fontSize: '10px', color: '#94a3b8' }}>{m.booking_date}</span>
                           </div>

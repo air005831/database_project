@@ -24,6 +24,7 @@ function PartyDetail() {
 	const { id } = useParams();
 	const location = useLocation();
 	const navigate = useNavigate();
+	const fromAdmin = location.state?.fromAdmin || false;
 
 	const defaultParty = useMemo(
 		() => ({
@@ -127,8 +128,7 @@ function PartyDetail() {
 
 	// 一進來就去後端拿最新的這筆球局資料，以防 location.state 的資料過舊（例如場地已確認但 state 沒更新）
 	useEffect(() => {
-		// 簡單判斷是否為真實後端 ID (通常會大於 10 或不是 mock ID)
-		if (!id || id === "1" || id === "2" || id === "3") return;
+		if (!id) return;
 		const fetchFreshParty = async () => {
 			try {
 				const freshData = await gamesApi.getGameById(id);
@@ -143,27 +143,68 @@ function PartyDetail() {
 						業餘: "業餘",
 						高手: "高手",
 					};
-					const originalLevel =
-						freshData.level || freshData.target_level || prev.level;
-					const rawLevel = reverseLevelMap[originalLevel] || originalLevel;
 
-					let venueStatus = "pending";
-					if (freshData.booking_status === "已佔到/已預約") {
-						venueStatus = "confirmed";
-					} else if (freshData.booking_status === "未佔到/未預約") {
-						venueStatus = "failed";
-					}
+					setParty((prev) => {
+						const originalLevel =
+							freshData.level || freshData.target_level || prev.level;
+						const rawLevel = reverseLevelMap[originalLevel] || originalLevel;
 
-					setParty((prev) => ({
-						...prev,
-						...freshData,
-						level: rawLevel,
-						venueStatus,
-						booking_status: freshData.booking_status,
-						game_note: freshData.game_note,
-						description:
-							freshData.game_note || freshData.description || prev.description,
-					}));
+						let venueStatus = "pending";
+						if (freshData.booking_status === "已佔到/已預約") {
+							venueStatus = "confirmed";
+						} else if (freshData.booking_status === "未佔到/未預約") {
+							venueStatus = "failed";
+						}
+
+						const formattedTime =
+							freshData.time ||
+							(freshData.booking_date
+								? `${freshData.booking_date} ${freshData.time_slot || ""}`
+								: prev.time);
+
+						const formattedPrice =
+							freshData.price ||
+							(freshData.total_price !== undefined
+								? parseFloat(freshData.total_price) === 0
+									? "免費"
+									: `$${parseFloat(freshData.total_price)} (總額分攤)`
+								: prev.price);
+
+						return {
+							...prev,
+							...freshData,
+							title: freshData.game_name || prev.title,
+							type: freshData.sport_name || prev.type,
+							time: formattedTime,
+							price: formattedPrice,
+							level: rawLevel,
+							venueStatus,
+							booking_status: freshData.booking_status,
+							game_note: freshData.game_note,
+							description:
+								freshData.game_note || freshData.description || prev.description,
+							participants: freshData.participants || prev.participants,
+							waitlist: freshData.waitlist || prev.waitlist,
+							currentPlayers:
+								freshData.current_players !== undefined
+									? freshData.current_players
+									: prev.currentPlayers,
+							maxPlayers:
+								freshData.most_players !== undefined
+									? freshData.most_players
+									: prev.maxPlayers,
+							currentWaitlist:
+								freshData.current_waitlist !== undefined
+									? freshData.current_waitlist
+									: prev.currentWaitlist,
+							maxWaitlist:
+								freshData.max_waitlist !== undefined
+									? freshData.max_waitlist
+									: prev.maxWaitlist,
+							genderLimit: freshData.gender_limit || prev.genderLimit,
+							facilities: freshData.facilities || prev.facilities,
+						};
+					});
 				}
 			} catch (err) {
 				console.error("Failed to fetch fresh party data:", err);
@@ -219,6 +260,21 @@ function PartyDetail() {
 		);
 	}, [party]);
 
+	const isFreeCourt = useMemo(() => {
+		const priceVal = parseFloat(party.total_price);
+		return priceVal === 0 || party.price === "免費";
+	}, [party]);
+
+	const isWithin30Mins = useMemo(() => {
+		if (!party.booking_date || !party.start_time) return false;
+		const now = new Date();
+		const [year, month, day] = party.booking_date.split("-");
+		const [hours, minutes] = party.start_time.split(":");
+		const startTime = new Date(year, month - 1, day, hours, minutes);
+		const diffMs = startTime.getTime() - now.getTime();
+		return diffMs <= 30 * 60 * 1000 && diffMs >= -2 * 60 * 60 * 1000;
+	}, [party]);
+
 	// 當打開名單 Modal 時，向後端索取真實資料
 	useEffect(() => {
 		if (showListModal) {
@@ -243,20 +299,22 @@ function PartyDetail() {
 	// 新增：場地狀態與檢舉功能狀態
 	const [isTimeApproaching, setIsTimeApproaching] = useState(false);
 	const [userGender, setUserGender] = useState(null);
+	const [currentUserRole, setCurrentUserRole] = useState(null);
 
 	useEffect(() => {
 		const fetchUser = async () => {
 			try {
 				const profile = await usersApi.getUserProfile();
 				setUserGender(profile.gender);
+				setCurrentUserRole(profile.role);
 			} catch (err) {
 				console.error("Failed to fetch user profile:", err);
 			}
 		};
-		if (currentUserId && !isUserHost) {
+		if (localStorage.getItem("token")) {
 			fetchUser();
 		}
-	}, [currentUserId, isUserHost]);
+	}, []);
 
 	useEffect(() => {
 		if (party?.booking_date && party?.start_time) {
@@ -476,6 +534,14 @@ function PartyDetail() {
 	const isFull = party.currentPlayers >= party.maxPlayers;
 	const isWaitlistFull = party.currentWaitlist >= party.maxWaitlist;
 
+	const handleBack = () => {
+		if (fromAdmin) {
+			navigate("/admin", { state: { tab: "user_management" } });
+		} else {
+			navigate(-1);
+		}
+	};
+
 	return (
 		<div className="home-container">
 			<nav className="navbar">
@@ -492,7 +558,7 @@ function PartyDetail() {
 				>
 					<button
 						className="btn-outline"
-						onClick={() => navigate(-1)}
+						onClick={handleBack}
 						style={{
 							display: "flex",
 							alignItems: "center",
@@ -500,7 +566,7 @@ function PartyDetail() {
 							fontWeight: "700",
 						}}
 					>
-						<ArrowLeft size={16} /> 返回大廳
+						<ArrowLeft size={16} /> 返回
 					</button>
 				</div>
 			</nav>
@@ -572,10 +638,14 @@ function PartyDetail() {
 								}}
 							>
 								{party.venueStatus === "confirmed"
-									? "✅ 場地已確認"
+									? isFreeCourt
+										? "✅ 有場地可使用"
+										: "✅ 場地已確認"
 									: party.venueStatus === "failed"
 										? "❌ 場地未借到"
-										: "⏳ 場地確認中"}
+										: isFreeCourt
+											? "⏳ 現場確認場地中"
+											: "⏳ 場地確認中"}
 							</span>
 						</div>
 
@@ -616,93 +686,97 @@ function PartyDetail() {
 					</div>
 
 					<div className="detail-card-body">
-						{isUserHost && !isHistory && party.venueStatus === "pending" && (
+						{isUserHost && !isHistory && isFreeCourt && isWithin30Mins && (
 							<div
 								style={{
-									backgroundColor: "#f8fafc",
-									border: "1px solid #e2e8f0",
+									backgroundColor: "#fffbeb",
+									border: "1px solid #fcd34d",
 									borderRadius: "12px",
 									padding: "20px",
 									marginBottom: "32px",
+									display: "flex",
+									flexDirection: "column",
+									gap: "12px",
 								}}
 							>
 								<h3
 									style={{
-										margin: "0 0 16px 0",
+										margin: "0",
 										fontSize: "16px",
-										color: "#1e293b",
+										color: "#b45309",
+										fontWeight: "800",
 									}}
 								>
-									👑 是否借到場地？
+									🔔 現場場地狀態回報
 								</h3>
-								<div style={{ display: "flex", gap: "12px" }}>
-									<button
-										className="btn-primary"
-										style={{
-											flex: 1,
-											backgroundColor: "#10b981",
-											border: "none",
-										}}
-										onClick={async () => {
-											console.log("Confirm venue button clicked, ID:", id);
-											try {
-												const updatedParty = await gamesApi.updateVenueStatus(
-													id,
-													{ status: "confirmed" },
-												);
-												console.log(
-													"Update venue status success:",
-													updatedParty,
-												);
-												setParty((prev) => ({
-													...prev,
-													...updatedParty,
-													venueStatus: "confirmed",
-												}));
-												showToast("已通知所有成員：場地確認成功！");
-											} catch (e) {
-												console.error("Update venue status failed:", e);
-												alert("更新失敗");
-											}
-										}}
-									>
-										✅ 確認借到場地
-									</button>
-									<button
-										className="btn-outline"
-										style={{
-											flex: 1,
-											color: "#ef4444",
-											borderColor: "#ef4444",
-										}}
-										onClick={async () => {
-											console.log("Failed venue button clicked, ID:", id);
-											try {
-												const updatedParty = await gamesApi.updateVenueStatus(
-													id,
-													{ status: "failed" },
-												);
-												console.log(
-													"Update venue status success (failed case):",
-													updatedParty,
-												);
-												setParty((prev) => ({
-													...prev,
-													...updatedParty,
-													venueStatus: "failed",
-												}));
-												showToast("已通知所有成員：活動取消！");
-											} catch (e) {
-												console.error("Update venue status failed:", e);
-												alert("更新失敗");
-											}
-										}}
-									>
-										❌ 場地未借到 (取消)
-									</button>
+								<p style={{ margin: "0", fontSize: "14px", color: "#78350f" }}>
+									此為免費場地，開局前 30 分鐘內您可以回報現場是否有空場地可使用，通知所有成員。
+								</p>
+								<div>
+									{party.venueStatus === "confirmed" ? (
+										<button
+											className="btn-outline"
+											style={{
+												width: "100%",
+												color: "#dc2626",
+												borderColor: "#dc2626",
+												backgroundColor: "#fef2f2",
+												fontWeight: "700",
+											}}
+											onClick={async () => {
+												try {
+													const updatedParty = await gamesApi.updateVenueStatus(
+														id,
+														{ status: "pending" },
+													);
+													setParty((prev) => ({
+														...prev,
+														...updatedParty,
+														venueStatus: "pending",
+													}));
+													showToast("已取消場地確認，並通知所有成員！");
+												} catch (e) {
+													console.error(e);
+													alert("更新失敗");
+												}
+											}}
+										>
+											⚠️ 取消確認場地可使用
+										</button>
+									) : (
+										<button
+											className="btn-primary"
+											style={{
+												width: "100%",
+												backgroundColor: "#10b981",
+												border: "none",
+												fontWeight: "700",
+											}}
+											onClick={async () => {
+												try {
+													const updatedParty = await gamesApi.updateVenueStatus(
+														id,
+														{ status: "confirmed" },
+													);
+													setParty((prev) => ({
+														...prev,
+														...updatedParty,
+														venueStatus: "confirmed",
+													}));
+													showToast("已確認場地可使用，並通知所有成員！");
+												} catch (e) {
+													console.error(e);
+													alert("確認失敗");
+												}
+											}}
+										>
+											✅ 確定有場地可使用
+										</button>
+									)}
 								</div>
 							</div>
 						)}
+
 
 						<div className="detail-info-grid">
 							<div className="detail-info-item">
@@ -865,7 +939,7 @@ function PartyDetail() {
 						</div>
 
 						{/* 報名參加按鈕 (居中顯示於名單按鈕下方) */}
-						{!isHistory && (
+						{!isHistory && !fromAdmin && (
 							<>
 								{!isUserHost && (
 									<div
