@@ -11,6 +11,14 @@ const adminApi = {
   },
 
   /**
+   * 取得意見回饋類型列表 (公開)
+   * @returns {Promise}
+   */
+  getFeedbackTypes: () => {
+    return axiosClient.get('/feedback_types');
+  },
+
+  /**
    * 管理員取得回饋清單 (限 Admin)
    * @param {Object} params - { is_handled }
    * @returns {Promise}
@@ -108,6 +116,49 @@ const adminApi = {
    */
   updateUserReputation: (userId, creditPoint) => {
     return axiosClient.patch(`/users/${userId}/reputation/`, { credit_point: creditPoint });
+  },
+
+  /**
+   * 上傳圖片 (公告圖片等)
+   * @param {File} file 
+   * @returns {Promise}
+   */
+  uploadImage: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return axiosClient.post('/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
+
+  /**
+   * 群發推播通知 (限 Admin)
+   * @param {Object} data - { target_group, content, game_id }
+   * @returns {Promise}
+   */
+  sendBroadcast: (data) => {
+    return axiosClient.post('/admin/broadcast', data);
+  },
+
+  /**
+   * 更新系統公告 (限 Admin)
+   * @param {number|string} id 
+   * @param {Object} data 
+   * @returns {Promise}
+   */
+  updateSystemAnnouncement: (id, data) => {
+    return axiosClient.put(`/announcements/${id}/`, data);
+  },
+
+  /**
+   * 刪除使用者回饋 (限 Admin)
+   * @param {number|string} id 
+   * @returns {Promise}
+   */
+  deleteFeedback: (id) => {
+    return axiosClient.delete(`/admin/feedbacks/${id}/`);
   }
 };
 
