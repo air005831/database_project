@@ -770,10 +770,9 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         user = request.user
         now = timezone.now()
         
-        # 篩選已參加且標記為 closed 的球局
+        # 篩選已參加的球局 (不限制 match_status='closed'，改在 Python 中依「優先看狀態，再看時間」判斷)
         queryset = GameMatch.objects.filter(
-            participants__user=user,
-            match_status='closed'
+            participants__user=user
         ).select_related(
             'sport', 'court__venue__address', 'creator'
         ).prefetch_related(
@@ -782,9 +781,12 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         
         valid_matches = []
         for match in queryset:
-            # 額外校驗：確保人數達標且時間確實已結束
-            if match.current_players_count >= match.least_players:
-                if get_match_end_datetime(match) <= now:
+            # 優先看狀態，再看時間
+            if match.match_status == 'closed':
+                valid_matches.append(match)
+            elif match.match_status != 'failed_to_start' and get_match_end_datetime(match) <= now:
+                # 時間已過且人數達標，視為歷史球局
+                if match.current_players_count >= match.least_players:
                     valid_matches.append(match)
                 
         lat = request.query_params.get('lat')
