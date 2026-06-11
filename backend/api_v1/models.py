@@ -452,7 +452,7 @@ class GameBulletin(models.Model):
         managed = FORCE_SQLITE
 
 class TaiwanRegion(models.Model):
-    id = models.AutoField(primary_key=True, db_column='region_id')
+    zipcode = models.CharField(max_length=5, primary_key=True, db_column='zipcode')
     city = models.CharField(max_length=50)
     district = models.CharField(max_length=50)
 

@@ -99,9 +99,9 @@ class NotificationAdmin(admin.ModelAdmin):
 
 @admin.register(TaiwanRegion)
 class TaiwanRegionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'city', 'district')
+    list_display = ('zipcode', 'city', 'district')
     list_filter = ('city',)
-    search_fields = ('city', 'district')
+    search_fields = ('zipcode', 'city', 'district')
 
 @admin.register(FeedbackType)
 class FeedbackTypeAdmin(admin.ModelAdmin):
