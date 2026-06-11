@@ -1824,6 +1824,9 @@ class AdminBroadcastViewSet(viewsets.ViewSet):
 
         if notifications:
             Notification.objects.bulk_create(notifications)
+            user_ids = [n.user_id for n in notifications if n.user_id]
+            if user_ids:
+                trigger_notification_update_multiple(user_ids)
 
         return Response({"detail": f"Broadcast sent to {len(notifications)} notifications."}, status=status.HTTP_200_OK)
 
@@ -2269,6 +2272,133 @@ def stream_game_updates(request):
     response['Cache-Control'] = 'no-cache'
     response['X-Accel-Buffering'] = 'no'
     return response
+
+# SSE 推送佇列管理 (通知)
+notification_sse_queues = []
+notification_sse_lock = threading.Lock()
+
+def trigger_notification_update_multiple(user_ids):
+    """
+    當有通知新增/修改/刪除時，觸發在線受影響用戶的 SSE 推送。
+    """
+    def do_put():
+        user_ids_set = set(user_ids)
+        with notification_sse_lock:
+            for q, uid in notification_sse_queues:
+                if uid in user_ids_set:
+                    q.put(True)
+    try:
+        connection = transaction.get_connection()
+        if connection.in_atomic_block:
+            transaction.on_commit(do_put)
+        else:
+            do_put()
+    except Exception:
+        do_put()
+
+from django.http import HttpResponse
+
+def stream_notification_updates(request):
+    """
+    Event-driven SSE endpoint for user-specific notification updates.
+    """
+    token_key = request.GET.get('token')
+    print(f"[SSE Notifications] Received connection request with token: {token_key}")
+    if not token_key:
+        print("[SSE Notifications] No token provided in query parameters.")
+        return HttpResponse("Unauthorized", status=401)
+        
+    from rest_framework.authtoken.models import Token
+    try:
+        token = Token.objects.get(key=token_key)
+        user = token.user
+    except Token.DoesNotExist:
+        print(f"[SSE Notifications] Token {token_key} does not exist in database.")
+        return HttpResponse("Unauthorized", status=401)
+    except Exception as e:
+        print(f"[SSE Notifications] Authentication failed with error: {e}")
+        return HttpResponse("Unauthorized", status=401)
+        
+    print(f"[SSE Notifications] User {user.id} ({user.name}) connected.")
+    
+    def event_stream():
+        q = queue.Queue()
+        with notification_sse_lock:
+            notification_sse_queues.append((q, user.id))
+        print(f"[SSE Notifications] Client connected. Active connection queues: {len(notification_sse_queues)}")
+            
+        try:
+            # 連線建立時先推送一次更新信號
+            q.put(True)
+            
+            while True:
+                try:
+                    q.get(timeout=3)
+                except queue.Empty:
+                    yield ": keep-alive\n\n"
+                    continue
+                
+                # 獲取使用者最新的通知列表
+                from django.db.models import Q
+                from .models import GameMatch, Notification
+                from .serializers import NotificationSerializer
+                
+                user_matches = GameMatch.objects.filter(
+                    Q(creator=user) | Q(participants__user=user)
+                ).values_list('id', flat=True)
+                match_ids = set(list(user_matches))
+                
+                notifs = Notification.objects.filter(
+                    Q(match_id__in=match_ids) | Q(match__isnull=True)
+                ).filter(
+                    Q(user=user) | (Q(user__isnull=True) & Q(match_id__in=match_ids))
+                ).order_by('-created_at')
+                
+                serializer = NotificationSerializer(notifs[:20], many=True)
+                current_data = json.dumps(serializer.data)
+                yield f"data: {current_data}\n\n"
+                
+        except Exception as e:
+            print(f"[SSE Notifications] Exception in stream: {e}")
+            yield f"data: {{\"error\": \"{str(e)}\"}}\n\n"
+        finally:
+            with notification_sse_lock:
+                for item in list(notification_sse_queues):
+                    if item[0] == q:
+                        notification_sse_queues.remove(item)
+            print(f"[SSE Notifications] Client disconnected. Remaining active connection queues: {len(notification_sse_queues)}")
+            
+    response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'
+    return response
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def test_trigger_notification(request):
+    user_id = request.data.get('user_id')
+    message = request.data.get('message', 'Test notification push!')
+    
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    try:
+        user = User.objects.get(id=user_id)
+        if request.data.get('action') == 'update':
+            # Update latest notification to is_read = True
+            from .models import Notification
+            notif = Notification.objects.filter(user=user).order_by('-created_at').first()
+            if notif:
+                notif.is_read = True
+                notif.save()
+                return Response({"status": "success", "action": "update"})
+            else:
+                return Response({"error": "No notification to update"}, status=400)
+        else:
+            from .models import Notification
+            Notification.objects.create(user=user, message=message)
+            return Response({"status": "success", "action": "create"})
+    except User.DoesNotExist:
+        return Response({"error": "User not found"}, status=404)
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])

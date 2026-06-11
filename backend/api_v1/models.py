@@ -428,7 +428,7 @@ class Announcement(models.Model):
 
 class Notification(models.Model):
     id = models.AutoField(primary_key=True, db_column='notification_id')
-    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='notifications', null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='notifications')
     match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, db_column='game_id', related_name='notifications', null=True, blank=True)
     message = models.TextField(db_column='message')
     is_read = models.BooleanField(default=False)
@@ -487,4 +487,23 @@ def handle_user_reputation_change(sender, instance, **kwargs):
     else:
         # Remove from active blacklist
         Blacklist.objects.filter(user=instance, removed_at__isnull=True).update(removed_at=timezone.now())
+
+
+@receiver(post_save, sender=Notification)
+def notification_saved(sender, instance, **kwargs):
+    if instance.user_id:
+        try:
+            from .views import trigger_notification_update_multiple
+            trigger_notification_update_multiple([instance.user_id])
+        except ImportError:
+            pass
+
+@receiver(post_delete, sender=Notification)
+def notification_deleted(sender, instance, **kwargs):
+    if instance.user_id:
+        try:
+            from .views import trigger_notification_update_multiple
+            trigger_notification_update_multiple([instance.user_id])
+        except ImportError:
+            pass
 
