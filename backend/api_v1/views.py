@@ -817,7 +817,6 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         city = self.request.query_params.get('city')
         date = self.request.query_params.get('date')
         time_slot = self.request.query_params.get('time_slot')
-        
         region = self.request.query_params.get('region')
         sport_type = self.request.query_params.get('sport_type')
         level = self.request.query_params.get('level')
