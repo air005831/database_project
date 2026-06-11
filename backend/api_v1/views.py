@@ -908,8 +908,8 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             # 2. Distance calculation
             dist = None
             if lat is not None and lng is not None:
-                venue_lat = match.court.venue.latitude if match.court and match.court.venue else None
-                venue_lng = match.court.venue.longitude if match.court and match.court.venue else None
+                venue_lat = match.court.venue.address.latitude if match.court and match.court.venue and match.court.venue.address else None
+                venue_lng = match.court.venue.address.longitude if match.court and match.court.venue and match.court.venue.address else None
                 if venue_lat is not None and venue_lng is not None:
                     dist = haversine_distance(float(lat), float(lng), float(venue_lat), float(venue_lng))
             

@@ -75,6 +75,11 @@ class VenueSerializer(serializers.ModelSerializer):
     street_line = serializers.CharField(write_only=True, required=False, allow_blank=True)
     sport_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     court_count = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    
+    # 動態取得經緯度
+    latitude = serializers.DecimalField(source='address.latitude', max_digits=10, decimal_places=8, read_only=True)
+    longitude = serializers.DecimalField(source='address.longitude', max_digits=11, decimal_places=8, read_only=True)
+
     class Meta:
         model = Venue
         fields = (

@@ -149,6 +149,8 @@ class Address(models.Model):
     city = models.CharField(max_length=50)
     district = models.CharField(max_length=50)
     street_line = models.CharField(max_length=255)
+    latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True, db_column='latitude')
+    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True, db_column='longitude')
 
     def __str__(self):
         return f"{self.city}{self.district}{self.street_line}"
@@ -179,8 +181,6 @@ class Venue(models.Model):
     name = models.CharField(max_length=100)
     opening_hours = models.JSONField(null=True, blank=True)
     types = models.CharField(max_length=20, choices=VENUE_TYPES, null=True, blank=True)
-    latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True, db_column='latitude')
-    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True, db_column='longitude')
     facilities = models.ManyToManyField(Facility, db_table='venue_facilities', related_name='venues')
 
     def __str__(self):
