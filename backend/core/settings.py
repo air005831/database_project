@@ -120,7 +120,7 @@ def check_mysql_availability(host='localhost', port=3306, timeout=1.0):
 import os
 db_host = os.environ.get('DB_HOST', 'localhost')
 db_port = int(os.environ.get('DB_PORT', '3306'))
-mysql_available, reason = check_mysql_availability(host="26.232.235.50", port=3306, timeout=5.0)
+mysql_available, reason = check_mysql_availability(host=db_host, port=db_port, timeout=5.0)
 if os.environ.get('FORCE_SQLITE') == 'True':
     mysql_available = False
     reason = "Forced by FORCE_SQLITE environment variable"

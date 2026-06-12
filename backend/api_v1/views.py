@@ -789,6 +789,9 @@ class GameMatchViewSet(viewsets.ModelViewSet):
                 if match.current_players_count >= match.least_players:
                     valid_matches.append(match)
 
+        serializer = GameMatchListSerializer(valid_matches, many=True, context={'request': request})
+        return Response(serializer.data)
+
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'quick_match']:
             return [permissions.AllowAny(), IsNotBanned()]
@@ -905,20 +908,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             weather_idx = (5 * float(rain_prob)) + (float(aqi) / 50.0)
             match.weather = round(weather_idx, 1)
             
-            # 2. Distance calculation
-            dist = None
-            if lat is not None and lng is not None:
-                venue_lat = match.court.venue.address.latitude if match.court and match.court.venue and match.court.venue.address else None
-                venue_lng = match.court.venue.address.longitude if match.court and match.court.venue and match.court.venue.address else None
-                if venue_lat is not None and venue_lng is not None:
-                    dist = haversine_distance(float(lat), float(lng), float(venue_lat), float(venue_lng))
-            
-            match.distance_km = dist
-            
-            # Apply radius filter
-            if radius is not None and dist is not None:
-                if dist > float(radius):
-                    continue
+            match.distance_km = None
             
             matches_list.append(match)
 
@@ -1907,8 +1897,6 @@ class OpenDataViewSet(viewsets.ViewSet):
                         "address": addr,
                         "opening_hours": {"weekdays": "06:00-22:00", "weekends": "06:00-22:00"},
                         "types": "indoor" if "冷氣" in v_data["facilities"] else "outdoor",
-                        "latitude": v_data["lat"],
-                        "longitude": v_data["lng"]
                     }
                 )
 

@@ -239,6 +239,7 @@ function Admin() {
           facilities: v.facilities || [],
           opening_hours: v.opening_hours || null,
           court_count: v.court_count || 0,
+          sport_ids: v.sport_ids || [],
           sports: v.sports || [],
           courts: v.courts || []
         }));
@@ -256,21 +257,12 @@ function Admin() {
           mappedVenues = mappedVenues.filter(v => v.district.includes(filterDistrict));
         }
         if (filterSport) {
-          const selectedSportObj = sportsList.find(s => String(s.id) === String(filterSport));
-          if (selectedSportObj) {
-            const sportName = selectedSportObj.name;
-            mappedVenues = mappedVenues.filter(v => 
-              v.opening_hours?.opening?.some(o => o.category?.includes(sportName))
-            );
-          }
+          mappedVenues = mappedVenues.filter(v =>
+            (v.sport_ids || []).includes(Number(filterSport))
+          );
         }
 
-        // 新需求：若使用者未提供任何篩選條件，則不顯示列表資料，避免頁面一打開太凌亂
-        if (!filterCity && !filterDistrict && !filterSport) {
-          setVenues([]);
-        } else {
-          setVenues(mappedVenues);
-        }
+        setVenues(mappedVenues);
       } catch (error) {
         console.error('Fetch venues error:', error);
       }

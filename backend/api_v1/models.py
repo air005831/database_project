@@ -149,8 +149,6 @@ class Address(models.Model):
     city = models.CharField(max_length=50)
     district = models.CharField(max_length=50)
     street_line = models.CharField(max_length=255)
-    latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True, db_column='latitude')
-    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True, db_column='longitude')
 
     def __str__(self):
         return f"{self.city}{self.district}{self.street_line}"
