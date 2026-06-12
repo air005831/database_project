@@ -1000,7 +1000,7 @@ function Admin() {
 
   const handleDeleteVenue = async (id) => {
     const venueToDelete = venues.find(v => v.id === id);
-    if (!venueToDelete) return;
+    if (!venueToDelete) return false;
 
     if (window.confirm(`確定要刪除場地「${venueToDelete.name}」嗎？`)) {
       if (window.confirm('請再次確認，刪除後將無法復原！確定要刪除嗎？')) {
@@ -1008,13 +1008,16 @@ function Admin() {
           await adminApi.deleteVenue(id);
           setVenues(venues.filter(v => v.id !== id));
           alert('場地已成功刪除。');
+          return true;
         } catch (error) {
           console.error('Delete venue error:', error);
           const errorDetail = error.response?.data?.detail || '刪除場地失敗，請確認該場地是否被使用中。';
           alert(errorDetail);
+          return false;
         }
       }
     }
+    return false;
   };
 
   const handleOpenCourtManager = async (venue) => {
@@ -1719,14 +1722,44 @@ function Admin() {
                 </div>
               </div>
 
-              {/* 表單送出按鈕 */}
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '12px' }}>
-                <button type="button" className="btn-outline" onClick={handleCloseModal} style={{ margin: 0 }}>
-                  取消
-                </button>
-                <button type="submit" className="login-button" style={{ width: '160px', margin: 0 }}>
-                  {editingVenueId ? "儲存修改" : "確認新增"}
-                </button>
+              {/* 表單送出與刪除按鈕 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', gap: '12px', flexWrap: 'wrap' }}>
+                <div>
+                  {editingVenueId && (
+                    <button 
+                      type="button" 
+                      className="btn-outline" 
+                      onClick={async () => {
+                        const success = await handleDeleteVenue(editingVenueId);
+                        if (success) {
+                          handleCloseModal();
+                        }
+                      }} 
+                      style={{ 
+                        color: '#ef4444', 
+                        borderColor: '#fee2e2', 
+                        backgroundColor: '#fef2f2', 
+                        margin: 0,
+                        padding: '10px 18px',
+                        fontWeight: '700',
+                        borderRadius: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <Trash2 size={16} /> 刪除此場地
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button type="button" className="btn-outline" onClick={handleCloseModal} style={{ margin: 0 }}>
+                    取消
+                  </button>
+                  <button type="submit" className="login-button" style={{ width: '160px', margin: 0 }}>
+                    {editingVenueId ? "儲存修改" : "確認新增"}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
