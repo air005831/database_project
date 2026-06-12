@@ -233,10 +233,8 @@ function Admin() {
     fetchFacilities();
   }, []);
 
-  // 動態衍生篩選選單選項
-  const cityOptions = Object.keys(citiesToUse).length > 0 
-    ? Object.keys(citiesToUse) 
-    : [...new Set(allVenuesForFiltering.map(v => v.city).filter(Boolean))];
+  // 動態衍生篩選選單選項 (與新增/編輯場地 Modal 統一共用 citiesToUse 映射表)
+  const cityOptions = Object.keys(citiesToUse);
   const districtOptions = filterCity
     ? (citiesToUse[filterCity] || [])
     : [];
