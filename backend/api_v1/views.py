@@ -406,12 +406,12 @@ class VenueViewSet(viewsets.ModelViewSet):
         # 篩選縣市 (外鍵 address 下的 city)
         city = self.request.query_params.get('city')
         if city and city.strip() and city not in ['null', 'undefined']:
-            queryset = queryset.filter(address__city=city)
+            queryset = queryset.filter(address__zipcode__city=city)
             
         # 篩選區域 (外鍵 address 下 the district)
         district = self.request.query_params.get('district')
         if district and district.strip() and district not in ['null', 'undefined']:
-            queryset = queryset.filter(address__district__icontains=district)
+            queryset = queryset.filter(address__zipcode__district__icontains=district)
             
         # 篩選運動類型 (該場館底下有任一球場支援該運動)
         sport_id = self.request.query_params.get('sport_id')
@@ -425,9 +425,9 @@ class VenueViewSet(viewsets.ModelViewSet):
         city = self.request.query_params.get('city')
         district = self.request.query_params.get('district')
         if city:
-            queryset = queryset.filter(address__city__icontains=city)
+            queryset = queryset.filter(address__zipcode__city__icontains=city)
         if district:
-            queryset = queryset.filter(address__district__icontains=district)
+            queryset = queryset.filter(address__zipcode__district__icontains=district)
         return queryset
 
     def get_permissions(self):
@@ -829,7 +829,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         if target_level:
             queryset = queryset.filter(target_level=target_level)
         if city:
-            queryset = queryset.filter(court__venue__address__city__contains=city)
+            queryset = queryset.filter(court__venue__address__zipcode__city__contains=city)
         if date:
             queryset = queryset.filter(booking_date=date)
         if time_slot:
@@ -890,10 +890,6 @@ class GameMatchViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         
-        lat = request.query_params.get('lat')
-        lng = request.query_params.get('lng')
-        radius = request.query_params.get('radius') # in km
-
         matches_list = []
         for match in queryset:
             # 1. Weather calculation
@@ -907,8 +903,6 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             # playability index formula: (5 * rain_probability) + (aqi / 50.0)
             weather_idx = (5 * float(rain_prob)) + (float(aqi) / 50.0)
             match.weather = round(weather_idx, 1)
-            
-            match.distance_km = None
             
             matches_list.append(match)
 

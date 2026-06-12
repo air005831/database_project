@@ -79,7 +79,7 @@ class VenueSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venue
         fields = (
-            'id', 'name', 'address', 'address_detail', 'opening_hours', 'types',
+            'id', 'name', 'address', 'address_detail', 'opening_hours',
             'facilities',
             'city', 'district', 'street_line', 'sport_id', 'court_count'
         )
@@ -463,7 +463,6 @@ class GameMatchSerializer(serializers.ModelSerializer):
     participant_ids = serializers.SerializerMethodField()
     waitlist_ids = serializers.SerializerMethodField()
     creator_id = serializers.ReadOnlyField(source='creator.id')
-    distance_km = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True, required=False)
     facilities = serializers.SerializerMethodField()
     cancel_deadline = serializers.DateTimeField(required=False, allow_null=True)
     start_time = serializers.CharField(write_only=True, required=True)
@@ -486,7 +485,7 @@ class GameMatchSerializer(serializers.ModelSerializer):
             'current_players', 'target_level', 'booking_date', 'start_time', 'time_slot', 'duration', 'game_note', 'description',
             'total_price', 'split_price', 'deposit_required', 'cancel_deadline',
             'weather', 'air_index', 'booking_status',
-            'match_status', 'participants', 'waitlist', 'participant_ids', 'waitlist_ids', 'current_waitlist', 'max_waitlist', 'creator_id', 'distance_km', 'facilities',
+            'match_status', 'participants', 'waitlist', 'participant_ids', 'waitlist_ids', 'current_waitlist', 'max_waitlist', 'creator_id', 'facilities',
             'gender_limit', 'announcements'
         ]
         read_only_fields = ('match_status', 'weather', 'air_index', 'facilities', 'time_slot')
