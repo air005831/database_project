@@ -276,27 +276,27 @@ function Home() {
 
   const handleCityChange = (e) => {
     const selectedCity = e.target.value;
-    const districts = taiwanRegions[selectedCity] || {};
-    const firstDistrict = Object.keys(districts)[0] || '';
-    const venuesList = districts[firstDistrict] || [];
-    const firstVenue = venuesList[0] || '其他';
-    setNewParty({
-      ...newParty,
+    let firstDistrict = '';
+    if (Object.keys(dbRegions).length > 0) {
+      const districts = dbRegions[selectedCity] || [];
+      firstDistrict = districts[0] || '';
+    } else {
+      const districts = taiwanRegions[selectedCity] || {};
+      firstDistrict = Object.keys(districts)[0] || '';
+    }
+    setNewParty(prev => ({
+      ...prev,
       city: selectedCity,
-      district: firstDistrict,
-      venue: firstVenue
-    });
+      district: firstDistrict
+    }));
   };
 
   const handleDistrictChange = (e) => {
     const selectedDistrict = e.target.value;
-    const venuesList = taiwanRegions[newParty.city]?.[selectedDistrict] || [];
-    const firstVenue = venuesList[0] || '其他';
-    setNewParty({
-      ...newParty,
-      district: selectedDistrict,
-      venue: firstVenue
-    });
+    setNewParty(prev => ({
+      ...prev,
+      district: selectedDistrict
+    }));
   };
 
   // 3. Effects
@@ -426,20 +426,12 @@ function Home() {
     };
     const dbSportName = (sportMap[newParty.type] || newParty.type).toLowerCase();
 
+    // 1. 過濾適合該運動項目的所有場地
     const filteredVenues = allVenues.filter(v => 
       v.sports.some(s => s.toLowerCase() === dbSportName || s.toLowerCase() === newParty.type.toLowerCase()) || 
       v.sports.length === 0
     );
     
-    // 若該運動目前無可用場地，給個防呆
-    if (filteredVenues.length === 0) {
-      setTaiwanRegions({ '未選擇': { '未選擇': ['無適用場地'] } });
-      setVenueFacilities({});
-      setVenueMap({});
-      setNewParty(prev => ({ ...prev, city: '未選擇', district: '未選擇', venue: '無適用場地' }));
-      return;
-    }
-
     const regions = {};
     const facilities = {};
     const vMap = {};
@@ -454,28 +446,34 @@ function Home() {
       vMap[v.name] = v.id;
     });
 
-    setTaiwanRegions(regions);
-    setVenueFacilities(facilities);
-    setVenueMap(vMap);
+    if (Object.keys(regions).length > 0) {
+      setTaiwanRegions(regions);
+      setVenueFacilities(facilities);
+      setVenueMap(vMap);
+    } else {
+      setTaiwanRegions({ '未選擇': { '未選擇': ['無適用場地'] } });
+      setVenueFacilities({});
+      setVenueMap({});
+    }
 
-    // 檢查目前選的場地是否還在新的清單裡，不在的話重設為第一個
-    const currentCityValid = regions[newParty.city];
-    const currentDistValid = currentCityValid && regions[newParty.city][newParty.district];
-    const currentVenueValid = currentDistValid && regions[newParty.city][newParty.district].includes(newParty.venue);
+    // 2. 根據目前選定的城市與區域，找出該區內支援此運動之場地
+    const matchedVenues = allVenues.filter(v => 
+      v.city === newParty.city && 
+      v.district === newParty.district && 
+      (v.sports.some(s => s.toLowerCase() === dbSportName || s.toLowerCase() === newParty.type.toLowerCase()) || v.sports.length === 0)
+    );
 
-    if (!currentVenueValid) {
-      const firstCity = Object.keys(regions)[0];
-      const firstDist = firstCity ? Object.keys(regions[firstCity])[0] : '未選擇';
-      const firstVenue = firstDist ? regions[firstCity][firstDist][0] : '無適用場地';
-      
+    // 3. 檢查目前選的場地是否在 matchedVenues 中，不在的話重設為第一個 (若無適用場地則設為空字串 "")
+    const isCurrentVenueValid = matchedVenues.some(v => v.name === newParty.venue);
+
+    if (!isCurrentVenueValid) {
+      const firstVenue = matchedVenues.length > 0 ? matchedVenues[0].name : '';
       setNewParty(prev => ({
         ...prev,
-        city: firstCity,
-        district: firstDist,
         venue: firstVenue
       }));
     }
-  }, [newParty.type, allVenues]);
+  }, [newParty.type, allVenues, newParty.city, newParty.district]);
 
   const renderModalContent = () => {
     if (!selectedAnnouncement) return null;
