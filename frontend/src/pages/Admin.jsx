@@ -111,6 +111,7 @@ function Admin() {
   const [courtCounts, setCourtCounts] = useState([{ sport_id: '', count: 1 }]);
   const [isVenueModalOpen, setIsVenueModalOpen] = useState(false);
   const [venuePage, setVenuePage] = useState(1);
+  const [venueSearchQuery, setVenueSearchQuery] = useState('');
   const [facilitiesList, setFacilitiesList] = useState([]);
   const [openingHoursType, setOpeningHoursType] = useState('same');
   const [sameStart, setSameStart] = useState('08:00');
@@ -319,6 +320,11 @@ function Admin() {
             (v.sport_ids || []).includes(Number(filterSport))
           );
         }
+        if (venueSearchQuery) {
+          mappedVenues = mappedVenues.filter(v =>
+            v.name.toLowerCase().includes(venueSearchQuery.toLowerCase())
+          );
+        }
 
         setVenues(mappedVenues);
       } catch (error) {
@@ -326,7 +332,7 @@ function Admin() {
       }
     };
     fetchVenues();
-  }, [filterCity, filterDistrict, filterSport, sportsList]);
+  }, [filterCity, filterDistrict, filterSport, sportsList, venueSearchQuery]);
 
   // 載入後台資料 (採獨立 try-catch，防止單一 API 壞掉導致整頁空白)
   useEffect(() => {
@@ -1951,8 +1957,32 @@ function Admin() {
               </button>
             </div>
 
-            {/* 縣市/區域 篩選查詢 */}
-            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', backgroundColor: 'white', padding: '16px 24px', borderRadius: '12px', border: '1px solid #e2e8f0', alignItems: 'center' }}>
+             {/* 縣市/區域 篩選查詢 */}
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', backgroundColor: 'white', padding: '16px 24px', borderRadius: '12px', border: '1px solid #e2e8f0', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: '#64748b' }}>名稱搜尋：</span>
+                <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                  <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px' }} />
+                  <input 
+                    type="text" 
+                    placeholder="搜尋場地名稱..." 
+                    value={venueSearchQuery}
+                    onChange={e => {
+                      setVenueSearchQuery(e.target.value);
+                      setVenuePage(1);
+                    }}
+                    style={{ 
+                      padding: '8px 10px 8px 30px', 
+                      borderRadius: '8px', 
+                      border: '1px solid #cbd5e1', 
+                      fontSize: '13px', 
+                      width: '180px',
+                      margin: 0
+                    }}
+                  />
+                </div>
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '14px', fontWeight: '700', color: '#64748b' }}>篩選縣市：</span>
                 <select 
@@ -2009,6 +2039,7 @@ function Admin() {
                   setFilterCity('');
                   setFilterDistrict('');
                   setFilterSport('');
+                  setVenueSearchQuery('');
                 }}
               >
                 重置篩選
@@ -3393,6 +3424,27 @@ function Admin() {
       {/* Filters */}
       <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>名稱搜尋</span>
+          <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+            <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px' }} />
+            <input 
+              type="text" 
+              className="form-input"
+              placeholder="搜尋場地名稱..." 
+              value={venueSearchQuery}
+              onChange={e => {
+                setVenueSearchQuery(e.target.value);
+                setVenuePage(1);
+              }}
+              style={{ 
+                padding: '8px 10px 8px 30px', 
+                margin: 0,
+                width: '100%'
+              }}
+            />
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>縣市</span>
           <select className="form-input" style={{ margin: 0 }} value={filterCity} onChange={(e) => { setFilterCity(e.target.value); setFilterDistrict(''); }}>
             <option value="">全部縣市</option>
@@ -3413,7 +3465,7 @@ function Admin() {
             {sportsList.map(sport => <option key={sport.id} value={sport.id}>{sport.name}</option>)}
           </select>
         </div>
-        <button className="btn-outline" style={{ marginTop: '8px', padding: '8px 16px', width: '100%', margin: 0 }} onClick={() => { setFilterCity(''); setFilterDistrict(''); setFilterSport(''); }}>
+        <button className="btn-outline" style={{ marginTop: '8px', padding: '8px 16px', width: '100%', margin: 0 }} onClick={() => { setFilterCity(''); setFilterDistrict(''); setFilterSport(''); setVenueSearchQuery(''); }}>
           重置篩選
         </button>
       </div>
