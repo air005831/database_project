@@ -74,6 +74,7 @@ function Home() {
   const [venueFacilities, setVenueFacilities] = useState({});
   const [venueMap, setVenueMap] = useState({});
   const [regions, setRegions] = useState(taiwanRegions);
+  const [dbRegions, setDbRegions] = useState({});
 
   // 2. 所有 Function 宣告
   const fetchData = async (showLoading = true) => {
@@ -359,6 +360,25 @@ function Home() {
   }, []);
 
   useEffect(() => {
+    venuesApi.getRegions().then(data => {
+      if (Array.isArray(data)) {
+        const map = {};
+        data.forEach(item => {
+          if (!map[item.city]) {
+            map[item.city] = [];
+          }
+          if (!map[item.city].includes(item.district)) {
+            map[item.city].push(item.district);
+          }
+        });
+        setDbRegions(map);
+      }
+    }).catch(err => {
+      console.error('Lobby fetch regions error:', err);
+    });
+  }, []);
+
+  useEffect(() => {
     if (allVenues.length === 0) return;
 
     // 後端資料庫裡的運動名稱是英文，需要對應
@@ -495,6 +515,23 @@ function Home() {
     }
     
     return <div style={{ whiteSpace: 'pre-wrap' }}>{content}</div>;
+  };
+
+  const getFilterCities = () => {
+    if (Object.keys(dbRegions).length > 0) {
+      return Object.keys(dbRegions);
+    }
+    return Object.keys(regions).filter(c => c !== '未選擇');
+  };
+
+  const getFilterDistricts = (city) => {
+    if (Object.keys(dbRegions).length > 0) {
+      return dbRegions[city] || [];
+    }
+    if (regions[city]) {
+      return Object.keys(regions[city]).filter(d => d !== '未選擇');
+    }
+    return [];
   };
 
   return (
@@ -669,14 +706,14 @@ function Home() {
             <span>{weatherLocation} {temperature}°C AQI:{aqi}</span>
           </div>
           <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-            <select value={selectedFilterRegion} onChange={e => { setSelectedFilterRegion(e.target.value); setSelectedFilterDistrict('all'); }}>
+            <select className="region-select" value={selectedFilterRegion} onChange={e => { setSelectedFilterRegion(e.target.value); setSelectedFilterDistrict('all'); }}>
               <option value="all">所有縣市</option>
-              {Object.keys(regions).filter(c => c !== '未選擇').map(c => <option key={c} value={c}>{c}</option>)}
+              {getFilterCities().map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-            {selectedFilterRegion !== 'all' && regions[selectedFilterRegion] && (
+            {selectedFilterRegion !== 'all' && (
               <select className="region-select" value={selectedFilterDistrict} onChange={e => setSelectedFilterDistrict(e.target.value)}>
                 <option value="all">所有區域</option>
-                {Object.keys(regions[selectedFilterRegion]).filter(d => d !== '未選擇').map(d => <option key={d} value={d}>{d}</option>)}
+                {getFilterDistricts(selectedFilterRegion).map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             )}
             <div className="filter-chips">
