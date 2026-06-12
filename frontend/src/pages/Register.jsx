@@ -11,6 +11,7 @@ function Register() {
   const [isLoading, setIsLoading] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [modal, setModal] = useState({ show: false, message: '', title: '', type: 'error', onConfirm: null });
+  const [registerError, setRegisterError] = useState('');
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
