@@ -39,8 +39,8 @@ class UserSportLevelAdmin(admin.ModelAdmin):
 @admin.register(Address)
 class AddressAdmin(admin.ModelAdmin):
     list_display = ('id', 'city', 'district', 'street_line')
-    list_filter = ('city', 'district')
-    search_fields = ('city', 'district', 'street_line')
+    list_filter = ('zipcode__city', 'zipcode__district')
+    search_fields = ('zipcode__city', 'zipcode__district', 'street_line')
 
 @admin.register(Facility)
 class FacilityAdmin(admin.ModelAdmin):
@@ -49,8 +49,8 @@ class FacilityAdmin(admin.ModelAdmin):
 
 @admin.register(Venue)
 class VenueAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'address', 'types')
-    list_filter = ('types',)
+    list_display = ('id', 'name', 'address')
+    list_filter = ('address__zipcode__city',)
     search_fields = ('name',)
 
 @admin.register(Court)

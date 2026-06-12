@@ -5,7 +5,8 @@ from .views import (
     GameMatchViewSet, FavoriteGameViewSet, ReportViewSet,
     AdminGameViewSet, AdminBroadcastViewSet, NotificationViewSet, OpenDataViewSet,
     AdminAnalyticsView, DemoWeatherView, FeedbackViewSet, FeedbackTypeViewSet,
-    AnnouncementViewSet, upload_image, stream_game_updates, stream_notification_updates, test_trigger_notification, TaiwanRegionViewSet
+    AnnouncementViewSet, upload_image, stream_game_updates, stream_notification_updates, test_trigger_notification, TaiwanRegionViewSet,
+    FacilityViewSet
 )
 
 class OptionalSlashRouter(DefaultRouter):
@@ -30,6 +31,7 @@ router.register('feedback', FeedbackViewSet, basename='feedback')
 router.register('admin/feedbacks', FeedbackViewSet, basename='admin-feedback')
 router.register('feedback-types', FeedbackTypeViewSet, basename='feedback-type')
 router.register('taiwan_regions', TaiwanRegionViewSet, basename='taiwanregion')
+router.register('facilities', FacilityViewSet, basename='facility')
 
 urlpatterns = [
     path('games/stream/', stream_game_updates, name='games-stream'),

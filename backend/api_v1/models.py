@@ -460,16 +460,6 @@ class GameBulletin(models.Model):
         db_table = 'game_bulletins'
         managed = FORCE_SQLITE
 
-class TaiwanRegion(models.Model):
-    zipcode = models.CharField(max_length=5, primary_key=True, db_column='zipcode')
-    city = models.CharField(max_length=50)
-    district = models.CharField(max_length=50)
-
-    class Meta:
-        db_table = 'taiwan_regions'
-        unique_together = ('city', 'district')
-        managed = FORCE_SQLITE
-
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 
