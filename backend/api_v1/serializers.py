@@ -66,8 +66,14 @@ class AddressSerializer(serializers.ModelSerializer):
         model = Address
         fields = '__all__'
 
+class FacilitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Facility
+        fields = '__all__'
+
 class VenueSerializer(serializers.ModelSerializer):
     address_detail = AddressSerializer(source='address', read_only=True)
+    address = serializers.PrimaryKeyRelatedField(queryset=Address.objects.all(), required=False, allow_null=True)
     facilities = serializers.SlugRelatedField(many=True, read_only=True, slug_field='name')
     # 1. 定義寫入專用的唯寫虛擬欄位 (Write-Only Fields)
     city = serializers.CharField(write_only=True, required=False, allow_blank=True)
@@ -75,13 +81,14 @@ class VenueSerializer(serializers.ModelSerializer):
     street_line = serializers.CharField(write_only=True, required=False, allow_blank=True)
     sport_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     court_count = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    zipcode = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     
     class Meta:
         model = Venue
         fields = (
             'id', 'name', 'address', 'address_detail', 'opening_hours',
             'facilities',
-            'city', 'district', 'street_line', 'sport_id', 'court_count'
+            'city', 'district', 'street_line', 'sport_id', 'court_count', 'zipcode'
         )
     # 2. 於 representation 中動態加入 court_count，避免欄位名稱衝突
     def to_representation(self, instance):
@@ -111,14 +118,22 @@ class VenueSerializer(serializers.ModelSerializer):
         street_line = validated_data.pop('street_line', None)
         sport_id = validated_data.pop('sport_id', None)
         court_count = validated_data.pop('court_count', None)
+        zipcode = validated_data.pop('zipcode', None)
+        
         # 自動處理 Address 外鍵 (若不存在則新增)
-        if city or district or street_line:
+        if zipcode or city or district or street_line:
+            region = None
+            if zipcode:
+                region = TaiwanRegion.objects.filter(zipcode=str(zipcode)).first()
+            if not region and city and district:
+                region = TaiwanRegion.objects.filter(city=city, district=district).first()
+                
             address_obj, created = Address.objects.get_or_create(
-                city=city or '',
-                district=district or '',
+                zipcode=region,
                 street_line=street_line or ''
             )
             validated_data['address'] = address_obj
+            
         # 建立場館
         venue = super().create(validated_data)
         # 根據 court_counts 批量自動生成球場
@@ -144,13 +159,22 @@ class VenueSerializer(serializers.ModelSerializer):
                     court.sports.add(sport_obj)
             except Sport.DoesNotExist:
                 pass
-        # 處理 facilities 寫入
+                
+        # 處理 facilities 寫入 (相容 ID 與 Name)
         facilities_data = self.initial_data.get('facilities', None)
         if facilities_data is not None:
-            for facility_name in facilities_data:
-                facility_obj, created = Facility.objects.get_or_create(name=facility_name)
-                venue.facilities.add(facility_obj)
+            for f_item in facilities_data:
+                if isinstance(f_item, int) or (isinstance(f_item, str) and str(f_item).isdigit()):
+                    try:
+                        facility_obj = Facility.objects.get(id=int(f_item))
+                        venue.facilities.add(facility_obj)
+                    except Facility.DoesNotExist:
+                        pass
+                else:
+                    facility_obj, created = Facility.objects.get_or_create(name=str(f_item).strip())
+                    venue.facilities.add(facility_obj)
         return venue
+        
     # 4. 處理 PATCH / PUT 更新邏輯
     def update(self, instance, validated_data):
         city = validated_data.pop('city', None)
@@ -158,23 +182,78 @@ class VenueSerializer(serializers.ModelSerializer):
         street_line = validated_data.pop('street_line', None)
         sport_id = validated_data.pop('sport_id', None)
         court_count = validated_data.pop('court_count', None)
+        zipcode = validated_data.pop('zipcode', None)
+        
         # 若有提供地址資訊，進行地址更新或重新綁定
-        if city is not None or district is not None or street_line is not None:
+        if zipcode is not None or city is not None or district is not None or street_line is not None:
             current_address = instance.address
-            new_city = city if city is not None else (current_address.city if current_address else '')
-            new_dist = district if district is not None else (current_address.district if current_address else '')
+            
+            # Resolve region
+            region = None
+            if zipcode:
+                region = TaiwanRegion.objects.filter(zipcode=str(zipcode)).first()
+            if not region and city and district:
+                region = TaiwanRegion.objects.filter(city=city, district=district).first()
+                
+            if not region and current_address and current_address.zipcode:
+                region = current_address.zipcode
+                
             new_street = street_line if street_line is not None else (current_address.street_line if current_address else '')
             
             address_obj, created = Address.objects.get_or_create(
-                city=new_city,
-                district=new_dist,
+                zipcode=region,
                 street_line=new_street
             )
             validated_data['address'] = address_obj
+            
         # 更新場館資訊
         venue = super().update(instance, validated_data)
-        # 同步球場數量與球場運動種類
-        if court_count is not None or sport_id is not None:
+        
+        # 同步球場數量與球場運動種類 (優先採用新版 court_counts 進行 Reconcile)
+        court_counts = self.initial_data.get('court_counts', None)
+        if court_counts is not None:
+            existing_courts = list(venue.courts.all())
+            
+            # Map sport_id -> list of courts that support this sport
+            sport_courts = {}
+            for court in existing_courts:
+                for s in court.sports.all():
+                    if s.id not in sport_courts:
+                        sport_courts[s.id] = []
+                    sport_courts[s.id].append(court)
+            
+            updated_sport_ids = set()
+            for item in court_counts:
+                s_id = item.get('sport_id')
+                count = item.get('count', 0)
+                if not s_id:
+                    continue
+                s_id = int(s_id)
+                updated_sport_ids.add(s_id)
+                
+                try:
+                    sport_obj = Sport.objects.get(id=s_id)
+                    current_sport_courts = sport_courts.get(s_id, [])
+                    current_count = len(current_sport_courts)
+                    
+                    if current_count < count:
+                        for _ in range(count - current_count):
+                            c = Court.objects.create(venue=venue)
+                            c.sports.add(sport_obj)
+                    elif current_count > count:
+                        for c in current_sport_courts[count:]:
+                            c.delete()
+                except Sport.DoesNotExist:
+                    pass
+                    
+            # 刪除不再出現在 court_counts 中的球類的球場
+            all_current_sports = set(sport_courts.keys())
+            for s_id in all_current_sports:
+                if s_id not in updated_sport_ids:
+                    for c in sport_courts[s_id]:
+                        c.delete()
+        elif court_count is not None or sport_id is not None:
+            # 舊版單一運動與數量更新邏輯
             try:
                 sport_obj = None
                 if sport_id is not None:
@@ -183,14 +262,12 @@ class VenueSerializer(serializers.ModelSerializer):
                 current_courts = list(venue.courts.all())
                 current_count = len(current_courts)
                 
-                # 如果要增設球場但沒有提供 sport_id，優先從現有球場取得運動種類
                 if court_count is not None and current_count < court_count and sport_obj is None:
                     if current_count > 0:
                         sport_obj = current_courts[0].sports.first()
                     if sport_obj is None:
                         sport_obj = Sport.objects.first()
                         
-                # 處理球場數量的增刪
                 if court_count is not None:
                     if current_count < court_count:
                         for _ in range(court_count - current_count):
@@ -202,19 +279,26 @@ class VenueSerializer(serializers.ModelSerializer):
                         for c in courts_to_delete:
                             c.delete()
                             
-                # 如果有提供 sport_id，確保所有剩餘的球場均更新為指定的運動種類
                 if sport_id is not None and sport_obj is not None:
                     for court in venue.courts.all():
                         court.sports.set([sport_obj])
             except Sport.DoesNotExist:
                 pass
-        # 處理 facilities 更新
+                
+        # 處理 facilities 更新 (相容 ID 與 Name)
         facilities_data = self.initial_data.get('facilities', None)
         if facilities_data is not None:
             venue.facilities.clear()
-            for facility_name in facilities_data:
-                facility_obj, created = Facility.objects.get_or_create(name=facility_name)
-                venue.facilities.add(facility_obj)
+            for f_item in facilities_data:
+                if isinstance(f_item, int) or (isinstance(f_item, str) and str(f_item).isdigit()):
+                    try:
+                        facility_obj = Facility.objects.get(id=int(f_item))
+                        venue.facilities.add(facility_obj)
+                    except Facility.DoesNotExist:
+                        pass
+                else:
+                    facility_obj, created = Facility.objects.get_or_create(name=str(f_item).strip())
+                    venue.facilities.add(facility_obj)
         return venue
 
 
@@ -355,6 +439,58 @@ def validate_venue_hours(venue, booking_date, time_slot):
     day_name = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][booking_date.weekday()]
     
     opening_hours = venue.opening_hours
+
+    # 檢查新版 JSON 營業時間格式
+    has_new_format = any(k in opening_hours for k in ['all', 'weekday', 'weekend', 'regular_off', 'special_off'])
+    if has_new_format:
+        weekday_num = booking_date.weekday() + 1  # 1: Mon, ..., 7: Sun
+        date_str = booking_date.strftime("%Y-%m-%d")
+        
+        # 1. 檢查固定公休 (regular_off)
+        regular_off = opening_hours.get('regular_off', [])
+        if weekday_num in regular_off:
+            return False, f"該場地於 {day_name} 固定公休"
+            
+        # 2. 檢查特殊公休 (special_off)
+        special_off = opening_hours.get('special_off', [])
+        if date_str in special_off:
+            return False, f"該場地於 {date_str} 特殊休假不開放"
+            
+        # 3. 獲取當天的開放時段
+        time_range = None
+        if is_weekend and 'weekend' in opening_hours:
+            time_range = opening_hours['weekend']
+        elif not is_weekend and 'weekday' in opening_hours:
+            time_range = opening_hours['weekday']
+        else:
+            time_range = opening_hours.get('all')
+            
+        if time_range and len(time_range) >= 2:
+            v_start = parse_time_to_min(time_range[0])
+            v_end = parse_time_to_min(time_range[1])
+            if v_end <= v_start:
+                v_end += 1440
+                
+            if (v_end - v_start) >= 1440:
+                return True, ""
+                
+            # 校驗預約時段是否在開放時段內
+            if v_end > 1440:
+                # 跨日營業：如 22:00 - 03:00 (1320 - 1620)
+                # 晨間可容納 [0, 跨日結束時間], 晚間可容納 [跨日開始時間, 1440], 或預約本身跨日且在區間內
+                morning_limit = v_end - 1440
+                in_morning = (0 <= t_min and end_min <= morning_limit)
+                in_evening = (v_start <= t_min and end_min <= 1440)
+                in_crossing = (v_start <= t_min and end_min <= v_end)
+                if in_morning or in_evening or in_crossing:
+                    return True, ""
+            else:
+                # 一般營業：必須落在 [v_start, v_end] 內
+                if v_start <= t_min and end_min <= v_end:
+                    return True, ""
+                    
+            range_desc = f"{time_range[0]}-{time_range[1]}"
+            return False, f"超出該場地當天營業時間 ({range_desc})"
 
     # Format 1: weekdays/weekends
     if 'weekdays' in opening_hours or 'weekends' in opening_hours:
