@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import useGameStore from "../store/useGameStore";
 import {
 	MapPin,
 	Clock,
@@ -24,6 +25,8 @@ function PartyDetail() {
 	const { id } = useParams();
 	const location = useLocation();
 	const navigate = useNavigate();
+	const { parties, connectSSE, lastUpdate, updateParty } = useGameStore();
+	const fromAdmin = location.state?.fromAdmin || false;
 
 	const defaultParty = useMemo(
 		() => ({
@@ -58,8 +61,16 @@ function PartyDetail() {
 	);
 
 	const initialParty = useMemo(() => {
-		const party = location.state?.party || defaultParty;
-		const processedParty = { ...party };
+		const partyFromState = location.state?.party || parties.find(p => String(p.id) === String(id)) || defaultParty;
+		const processedParty = { ...partyFromState };
+
+		// Ensure key display fields are present
+		processedParty.title = processedParty.game_name || processedParty.title || defaultParty.title;
+		processedParty.time = processedParty.time_slot || processedParty.time || defaultParty.time;
+		processedParty.currentPlayers = processedParty.current_players ?? processedParty.currentPlayers ?? defaultParty.currentPlayers;
+		processedParty.maxPlayers = processedParty.most_players ?? processedParty.maxPlayers ?? defaultParty.maxPlayers;
+		processedParty.currentWaitlist = processedParty.current_waitlist ?? processedParty.currentWaitlist ?? defaultParty.currentWaitlist;
+		processedParty.maxWaitlist = processedParty.max_waitlist ?? processedParty.maxWaitlist ?? defaultParty.maxWaitlist;
 
 		// Robust venue status determination to prevent asking for confirmation again
 		let currentVenueStatus = processedParty.venueStatus;
@@ -92,6 +103,7 @@ function PartyDetail() {
 							line: `${p.replace(/\s+/g, "_").toLowerCase()}_line`,
 							age: 20 + idx * 2,
 							level: ["S", "A", "B", "C"][idx % 4],
+							gender: idx % 2 === 0 ? "男" : "女",
 						};
 					}
 					// 如果是對象但缺少 ID，補上模擬 ID
@@ -121,56 +133,85 @@ function PartyDetail() {
 			});
 		}
 		return processedParty;
-	}, [location.state, defaultParty]);
+	}, [location.state, defaultParty, parties, id]);
 
 	const [party, setParty] = useState(initialParty);
 
-	// 一進來就去後端拿最新的這筆球局資料，以防 location.state 的資料過舊（例如場地已確認但 state 沒更新）
-	useEffect(() => {
-		// 簡單判斷是否為真實後端 ID (通常會大於 10 或不是 mock ID)
-		if (!id || id === "1" || id === "2" || id === "3") return;
-		const fetchFreshParty = async () => {
-			try {
-				const freshData = await gamesApi.getGameById(id);
-				if (freshData) {
-					const reverseLevelMap = {
-						C: "休閒",
-						B: "業餘",
-						A: "高手",
-						S: "高手",
-						新手: "休閒",
-						休閒: "休閒",
-						業餘: "業餘",
-						高手: "高手",
-					};
-					const originalLevel =
-						freshData.level || freshData.target_level || prev.level;
-					const rawLevel = reverseLevelMap[originalLevel] || originalLevel;
+	const fetchPartyDetail = useCallback(async (showLoading = true) => {
+		if (!id) return;
+		try {
+			const freshData = await gamesApi.getGameById(id);
+			if (freshData) {
+				const reverseLevelMap = {
+					C: "休閒",
+					B: "業餘",
+					A: "高手",
+					S: "高手",
+					新手: "休閒",
+					休閒: "休閒",
+					業餘: "業餘",
+					高手: "高手",
+				};
+				const originalLevel = freshData.level || freshData.target_level || "C";
+				const rawLevel = reverseLevelMap[originalLevel] || originalLevel;
 
-					let venueStatus = "pending";
-					if (freshData.booking_status === "已佔到/已預約") {
-						venueStatus = "confirmed";
-					} else if (freshData.booking_status === "未佔到/未預約") {
-						venueStatus = "failed";
-					}
+				let venueStatus = "pending";
+				if (freshData.booking_status === "已佔到/已預約" || freshData.booking_status === "confirmed") {
+					venueStatus = "confirmed";
+				} else if (freshData.booking_status === "未佔到/未預約" || freshData.booking_status === "failed") {
+					venueStatus = "failed";
+				}
 
-					setParty((prev) => ({
+				setParty((prev) => {
+					const formattedTime =
+						freshData.time ||
+						(freshData.booking_date
+							? `${freshData.booking_date} ${freshData.time_slot || ""}`
+							: prev.time);
+
+					const formattedPrice =
+						freshData.price ||
+						(freshData.total_price !== undefined
+							? parseFloat(freshData.total_price) === 0
+								? "免費"
+								: `$${parseFloat(freshData.total_price)} (總額分攤)`
+							: prev.price);
+
+					return {
 						...prev,
 						...freshData,
+						title: freshData.game_name || freshData.title || prev.title,
+						type: freshData.sport_name || freshData.sport_type || freshData.type || prev.type,
+						time: formattedTime,
+						price: formattedPrice,
+						location: freshData.venue_name || freshData.location || prev.location,
+						currentPlayers: freshData.current_players ?? freshData.currentPlayers ?? prev.currentPlayers,
+						maxPlayers: freshData.most_players ?? freshData.maxPlayers ?? prev.maxPlayers,
+						currentWaitlist: freshData.current_waitlist ?? freshData.currentWaitlist ?? prev.currentWaitlist,
+						maxWaitlist: freshData.max_waitlist ?? freshData.maxWaitlist ?? prev.maxWaitlist,
 						level: rawLevel,
 						venueStatus,
 						booking_status: freshData.booking_status,
 						game_note: freshData.game_note,
-						description:
-							freshData.game_note || freshData.description || prev.description,
-					}));
-				}
-			} catch (err) {
-				console.error("Failed to fetch fresh party data:", err);
+						description: freshData.game_note || freshData.description || prev.description,
+						participants: freshData.participants || prev.participants,
+						waitlist: freshData.waitlist || prev.waitlist,
+						genderLimit: freshData.gender_limit || prev.genderLimit,
+						facilities: freshData.facilities || prev.facilities,
+					};
+				});
+				updateParty(freshData);
 			}
-		};
-		fetchFreshParty();
-	}, [id]);
+		} catch (err) {
+			console.error("Failed to fetch fresh party data:", err);
+		}
+	}, [id, updateParty]);
+
+	// 一進來就去後端拿最新的這筆球局資料
+	useEffect(() => {
+		if (!id || id === "1" || id === "2" || id === "3") return;
+		fetchPartyDetail();
+	}, [id, fetchPartyDetail]);
 
 	// 判斷當前使用者是否為主揪或已加入
 	const currentUserId = parseInt(localStorage.getItem("user_id"));
@@ -208,7 +249,7 @@ function PartyDetail() {
 	);
 	const [toastMsg, setToastMsg] = useState("");
 	const [showListModal, setShowListModal] = useState(null); // 'participants' | 'waitlist' | null
-	const [selectedMember, setSelectedMember] = useState(null); // 新增：被選擇查看資料的成員
+	const [selectedMember, setSelectedMember] = useState(null); // 簡單資料 Modal
 
 	// 判斷是否為歷史球局：狀態已關閉，或結束時間 < 現在
 	const isHistory = useMemo(() => {
@@ -228,6 +269,21 @@ function PartyDetail() {
 			}
 		}
 		return false;
+	}, [party]);
+
+	const isFreeCourt = useMemo(() => {
+		const priceVal = parseFloat(party.total_price);
+		return priceVal === 0 || party.price === "免費";
+	}, [party]);
+
+	const isWithin30Mins = useMemo(() => {
+		if (!party.booking_date || !party.start_time) return false;
+		const now = new Date();
+		const [year, month, day] = party.booking_date.split("-");
+		const [hours, minutes] = party.start_time.split(":");
+		const startTime = new Date(year, month - 1, day, hours, minutes);
+		const diffMs = startTime.getTime() - now.getTime();
+		return diffMs <= 30 * 60 * 1000 && diffMs >= -2 * 60 * 60 * 1000;
 	}, [party]);
 
 	// 當打開名單 Modal 時，向後端索取真實資料
@@ -254,20 +310,22 @@ function PartyDetail() {
 	// 新增：場地狀態與檢舉功能狀態
 	const [isTimeApproaching, setIsTimeApproaching] = useState(false);
 	const [userGender, setUserGender] = useState(null);
+	const [currentUserRole, setCurrentUserRole] = useState(null);
 
 	useEffect(() => {
 		const fetchUser = async () => {
 			try {
 				const profile = await usersApi.getUserProfile();
 				setUserGender(profile.gender);
+				setCurrentUserRole(profile.role);
 			} catch (err) {
 				console.error("Failed to fetch user profile:", err);
 			}
 		};
-		if (currentUserId && !isUserHost) {
+		if (localStorage.getItem("token")) {
 			fetchUser();
 		}
-	}, [currentUserId, isUserHost]);
+	}, []);
 
 	useEffect(() => {
 		if (party?.booking_date && party?.start_time) {
@@ -352,41 +410,49 @@ function PartyDetail() {
 		}
 	}, [showAnnouncementModal, party.id]);
 
-	// 即時輪詢：每 15 秒更新人數與狀態（Feature 6）
+	// 啟動全域 SSE 連線
+	useEffect(() => {
+		connectSSE();
+	}, [connectSSE]);
+
+	// 監聽全域 Store 的更新，若當前球局有變動則重新抓取細節
+	useEffect(() => {
+		const updatedInStore = parties.find(p => String(p.id) === String(id));
+		if (updatedInStore) {
+			const hasChanged = 
+				party.currentPlayers !== updatedInStore.currentPlayers ||
+				party.match_status !== updatedInStore.match_status ||
+				party.booking_status !== updatedInStore.booking_status;
+			
+			console.log('[PartyDetail] Store updated. Checking changes for party:', id, {
+				local: {
+					currentPlayers: party.currentPlayers,
+					match_status: party.match_status,
+					booking_status: party.booking_status
+				},
+				store: {
+					currentPlayers: updatedInStore.currentPlayers,
+					match_status: updatedInStore.match_status,
+					booking_status: updatedInStore.booking_status
+				},
+				hasChanged
+			});
+			
+			if (hasChanged) {
+				console.log('[PartyDetail] Change detected, refetching fresh party details from backend...');
+				fetchPartyDetail(false);
+			}
+		}
+	}, [lastUpdate, id, parties, party.currentPlayers, party.match_status, party.booking_status, fetchPartyDetail]);
+
+	// 降級方案：30 秒輪詢一次
 	useEffect(() => {
 		if (!id || isHistory) return;
-		const pollInterval = setInterval(async () => {
-			try {
-				const fresh = await gamesApi.getGameById(id);
-				if (!fresh) return;
-				setParty((prev) => ({
-					...prev,
-					currentPlayers: fresh.current_players ?? prev.currentPlayers,
-					currentWaitlist: fresh.current_waitlist ?? prev.currentWaitlist,
-					participant_ids: fresh.participant_ids ?? prev.participant_ids,
-					waitlist_ids: fresh.waitlist_ids ?? prev.waitlist_ids,
-					match_status: fresh.match_status ?? prev.match_status,
-				}));
-				// 同步自己的參與狀態
-				const myId = String(currentUserId);
-				const partIds = (fresh.participant_ids || []).map(String);
-				const waitIds = (fresh.waitlist_ids || []).map(String);
-				if (partIds.includes(myId) || waitIds.includes(myId)) {
-					if (!hasJoined) setHasJoined(true);
-					if (waitIds.includes(myId)) {
-						setIsWaitlisted(true);
-						setJoinType('waitlist');
-					} else {
-						setIsWaitlisted(false);
-						setJoinType('normal');
-					}
-				}
-			} catch (err) {
-				// 靜默失敗，避免干擾用戶
-			}
-		}, 15000);
+		const pollInterval = setInterval(() => {
+			fetchPartyDetail(false);
+		}, 30000);
 		return () => clearInterval(pollInterval);
-	}, [id, isHistory, currentUserId, hasJoined]);
+	}, [id, isHistory, fetchPartyDetail]);
 
 	const getLevelColor = (lv) => {
 		switch (lv) {
@@ -423,6 +489,7 @@ function PartyDetail() {
 					waitlist_ids: fresh.waitlist_ids ?? prev.waitlist_ids,
 					match_status: fresh.match_status ?? prev.match_status,
 				}));
+				updateParty(fresh);
 			}
 		} catch (err) {
 			console.error('Refresh party data error:', err);
@@ -535,6 +602,14 @@ function PartyDetail() {
 	const isFull = party.currentPlayers >= party.maxPlayers;
 	const isWaitlistFull = party.currentWaitlist >= party.maxWaitlist;
 
+	const handleBack = () => {
+		if (fromAdmin) {
+			navigate("/admin", { state: { tab: "user_management" } });
+		} else {
+			navigate(-1);
+		}
+	};
+
 	return (
 		<div className="home-container">
 			<nav className="navbar">
@@ -551,7 +626,7 @@ function PartyDetail() {
 				>
 					<button
 						className="btn-outline"
-						onClick={() => navigate(-1)}
+						onClick={handleBack}
 						style={{
 							display: "flex",
 							alignItems: "center",
@@ -559,7 +634,7 @@ function PartyDetail() {
 							fontWeight: "700",
 						}}
 					>
-						<ArrowLeft size={16} /> 返回大廳
+						<ArrowLeft size={16} /> 返回
 					</button>
 				</div>
 			</nav>
@@ -573,18 +648,7 @@ function PartyDetail() {
 					style={{ padding: 0, overflow: "hidden", position: "relative" }}
 				>
 					{/* 標題與設施 (背景透明度調整) */}
-					<div
-						style={{
-							minHeight: "220px",
-							background:
-								"linear-gradient(135deg, rgba(121, 149, 165, 0.85), rgba(75, 98, 114, 0.85))",
-							padding: "60px 40px 30px 40px",
-							color: "white",
-							display: "flex",
-							flexDirection: "column",
-							justifyContent: "flex-end",
-						}}
-					>
+					<div className="detail-card-header-bg">
 						<div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
 							<span
 								className="party-type"
@@ -642,10 +706,14 @@ function PartyDetail() {
 								}}
 							>
 								{party.venueStatus === "confirmed"
-									? "✅ 場地已確認"
+									? isFreeCourt
+										? "✅ 有場地可使用"
+										: "✅ 場地已確認"
 									: party.venueStatus === "failed"
 										? "❌ 場地未借到"
-										: "⏳ 場地確認中"}
+										: isFreeCourt
+											? "⏳ 現場確認場地中"
+											: "⏳ 場地確認中"}
 							</span>
 						</div>
 
@@ -685,117 +753,109 @@ function PartyDetail() {
 						</div>
 					</div>
 
-					<div style={{ padding: "40px" }}>
-						{isUserHost && !isHistory && party.venueStatus === "pending" && (
+					<div className="detail-card-body">
+						{isUserHost && !isHistory && isFreeCourt && isWithin30Mins && (
 							<div
 								style={{
-									backgroundColor: "#f8fafc",
-									border: "1px solid #e2e8f0",
+									backgroundColor: "#fffbeb",
+									border: "1px solid #fcd34d",
 									borderRadius: "12px",
 									padding: "20px",
 									marginBottom: "32px",
+									display: "flex",
+									flexDirection: "column",
+									gap: "12px",
 								}}
 							>
 								<h3
 									style={{
-										margin: "0 0 16px 0",
+										margin: "0",
 										fontSize: "16px",
-										color: "#1e293b",
+										color: "#b45309",
+										fontWeight: "800",
 									}}
 								>
-									👑 是否借到場地？
+									🔔 現場場地狀態回報
 								</h3>
-								<div style={{ display: "flex", gap: "12px" }}>
-									<button
-										className="btn-primary"
-										style={{
-											flex: 1,
-											backgroundColor: "#10b981",
-											border: "none",
-										}}
-										onClick={async () => {
-											console.log("Confirm venue button clicked, ID:", id);
-											try {
-												const updatedParty = await gamesApi.updateVenueStatus(
-													id,
-													{ status: "confirmed" },
-												);
-												console.log(
-													"Update venue status success:",
-													updatedParty,
-												);
-												setParty((prev) => ({
-													...prev,
-													...updatedParty,
-													venueStatus: "confirmed",
-												}));
-												showToast("已通知所有成員：場地確認成功！");
-											} catch (e) {
-												console.error("Update venue status failed:", e);
-												alert("更新失敗");
-											}
-										}}
-									>
-										✅ 確認借到場地
-									</button>
-									<button
-										className="btn-outline"
-										style={{
-											flex: 1,
-											color: "#ef4444",
-											borderColor: "#ef4444",
-										}}
-										onClick={async () => {
-											console.log("Failed venue button clicked, ID:", id);
-											try {
-												const updatedParty = await gamesApi.updateVenueStatus(
-													id,
-													{ status: "failed" },
-												);
-												console.log(
-													"Update venue status success (failed case):",
-													updatedParty,
-												);
-												setParty((prev) => ({
-													...prev,
-													...updatedParty,
-													venueStatus: "failed",
-												}));
-												showToast("已通知所有成員：活動取消！");
-											} catch (e) {
-												console.error("Update venue status failed:", e);
-												alert("更新失敗");
-											}
-										}}
-									>
-										❌ 場地未借到 (取消)
-									</button>
+								<p style={{ margin: "0", fontSize: "14px", color: "#78350f" }}>
+									此為免費場地，開局前 30 分鐘內您可以回報現場是否有空場地可使用，通知所有成員。
+								</p>
+								<div>
+									{party.venueStatus === "confirmed" ? (
+										<button
+											className="btn-outline"
+											style={{
+												width: "100%",
+												color: "#dc2626",
+												borderColor: "#dc2626",
+												backgroundColor: "#fef2f2",
+												fontWeight: "700",
+											}}
+											onClick={async () => {
+												try {
+													const updatedParty = await gamesApi.updateVenueStatus(
+														id,
+														{ status: "pending" },
+													);
+													setParty((prev) => {
+														const next = {
+															...prev,
+															...updatedParty,
+															venueStatus: "pending",
+														};
+														updateParty(next);
+														return next;
+													});
+													showToast("已取消場地確認，並通知所有成員！");
+												} catch (e) {
+													console.error(e);
+													alert("更新失敗");
+												}
+											}}
+										>
+											⚠️ 取消確認場地可使用
+										</button>
+									) : (
+										<button
+											className="btn-primary"
+											style={{
+												width: "100%",
+												backgroundColor: "#10b981",
+												border: "none",
+												fontWeight: "700",
+											}}
+											onClick={async () => {
+												try {
+													const updatedParty = await gamesApi.updateVenueStatus(
+														id,
+														{ status: "confirmed" },
+													);
+													setParty((prev) => {
+														const next = {
+															...prev,
+															...updatedParty,
+															venueStatus: "confirmed",
+														};
+														updateParty(next);
+														return next;
+													});
+													showToast("已確認場地可使用，並通知所有成員！");
+												} catch (e) {
+													console.error(e);
+													alert("確認失敗");
+												}
+											}}
+										>
+											✅ 確定有場地可使用
+										</button>
+									)}
 								</div>
 							</div>
 						)}
 
-						<div
-							className="detail-info-row"
-							style={{
-								display: "grid",
-								gridTemplateColumns: "1fr 1fr",
-								gap: "20px",
-								paddingBottom: "32px",
-							}}
-						>
-							<div
-								className="detail-info-item"
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: "8px",
-									fontSize: "16px",
-									backgroundColor: "#f8fafc",
-									padding: "16px 20px",
-									borderRadius: "12px",
-									border: "1px solid #e2e8f0",
-								}}
-							>
+
+						<div className="detail-info-grid">
+							<div className="detail-info-item">
 								<Clock size={20} color="#7995a5" />
 								<span style={{ color: "#64748b", fontWeight: "600" }}>
 									時間：
@@ -803,19 +863,7 @@ function PartyDetail() {
 								<span style={{ fontWeight: "800" }}>{party.time}</span>
 							</div>
 
-							<div
-								className="detail-info-item"
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: "8px",
-									fontSize: "16px",
-									backgroundColor: "#f8fafc",
-									padding: "16px 20px",
-									borderRadius: "12px",
-									border: "1px solid #e2e8f0",
-								}}
-							>
+							<div className="detail-info-item">
 								<Timer size={20} color="#7995a5" />
 								<span style={{ color: "#64748b", fontWeight: "600" }}>
 									時長：
@@ -825,20 +873,7 @@ function PartyDetail() {
 								</span>
 							</div>
 
-							<div
-								className="detail-info-item"
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: "8px",
-									fontSize: "16px",
-									backgroundColor: "#f8fafc",
-									padding: "16px 20px",
-									borderRadius: "12px",
-									border: "1px solid #e2e8f0",
-									position: "relative",
-								}}
-							>
+							<div className="detail-info-item" style={{ position: "relative" }}>
 								<MapPin size={20} color="#7995a5" />
 								<div
 									style={{ display: "flex", flexDirection: "column", flex: 1 }}
@@ -858,19 +893,7 @@ function PartyDetail() {
 								</div>
 							</div>
 
-							<div
-								className="detail-info-item"
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: "8px",
-									fontSize: "16px",
-									backgroundColor: "#f8fafc",
-									padding: "16px 20px",
-									borderRadius: "12px",
-									border: "1px solid #e2e8f0",
-								}}
-							>
+							<div className="detail-info-item">
 								<DollarSign size={20} color="#7995a5" />
 								<span style={{ color: "#64748b", fontWeight: "600" }}>
 									{" "}
@@ -992,7 +1015,7 @@ function PartyDetail() {
 						</div>
 
 						{/* 報名參加按鈕 (居中顯示於名單按鈕下方) */}
-						{!isHistory && (
+						{!isHistory && !fromAdmin && (
 							<>
 								{!isUserHost && (
 									<div
@@ -1118,16 +1141,25 @@ function PartyDetail() {
 									>
 										<div
 											className="participant-avatar"
-											style={
-												showListModal === "waitlist"
-													? { backgroundColor: "#94a3b8" }
-													: {}
-											}
+											style={{
+												...(showListModal === "waitlist" ? { backgroundColor: "#94a3b8" } : {}),
+												cursor: "pointer",
+												overflow: "hidden",
+												display: "flex",
+												alignItems: "center",
+												justifyContent: "center",
+												border: "2px solid #f1f5f9"
+											}}
+											onClick={() => navigate(`/profile/${p.id}`, { state: { mockUser: p } })}
 										>
-											{p.name.charAt(0)}
+											{p.avatar ? (
+												<img src={p.avatar} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+											) : (
+												p.name.charAt(0)
+											)}
 										</div>
 										<div style={{ display: "flex", flexDirection: "column" }}>
-											<span style={{ fontWeight: "700" }}>
+											<span style={{ fontWeight: "700", cursor: "pointer" }} onClick={() => navigate(`/profile/${p.id}`, { state: { mockUser: p } })}>
 												{p.name}
 												{showListModal === "participants" && idx === 0 && (
 													<span
@@ -1170,17 +1202,85 @@ function PartyDetail() {
 											</div>
 										</div>
 									</div>
-									<button
-										className="btn-outline"
-										style={{
-											padding: "6px 12px",
-											fontSize: "13px",
-											borderRadius: "8px",
-										}}
-										onClick={() => setSelectedMember(p)}
-									>
-										查看資料
-									</button>
+									<div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+										{(p.gender === "male" || p.gender === "男") ? (
+											<span style={{ backgroundColor: "#eff6ff", color: "#3b82f6", display: "inline-flex", alignItems: "center", justifyContent: "center", width: "30px", height: "30px", borderRadius: "50%", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+												<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+													<circle cx="10" cy="14" r="5"></circle>
+													<line x1="13.5" y1="10.5" x2="19" y2="5"></line>
+													<polyline points="15 5 19 5 19 9"></polyline>
+												</svg>
+											</span>
+										) : (p.gender === "female" || p.gender === "女") ? (
+											<span style={{ backgroundColor: "#fdf2f8", color: "#ec4899", display: "inline-flex", alignItems: "center", justifyContent: "center", width: "30px", height: "30px", borderRadius: "50%", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+												<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+													<circle cx="12" cy="9" r="5"></circle>
+													<line x1="12" y1="14" x2="12" y2="21"></line>
+													<line x1="9" y1="18" x2="15" y2="18"></line>
+												</svg>
+											</span>
+										) : p.gender ? (
+											<span style={{ color: "#94a3b8", fontSize: "12px", border: "1px solid #cbd5e1", padding: "4px 8px", borderRadius: "12px", backgroundColor: "#f8fafc", fontWeight: "600" }}>{p.gender}</span>
+										) : null}
+										
+										{String(p.id) !== String(currentUserId) && (
+											<button
+												className="btn-outline"
+												style={{
+													padding: "6px 12px",
+													fontSize: "13px",
+													borderRadius: "8px",
+												}}
+												onClick={() => setSelectedMember(p)}
+											>
+												查看資料
+											</button>
+										)}
+										{isHistory && isParticipant &&
+											String(p.id) !== String(currentUserId) &&
+											p.name !== "我 (使用者)" &&
+											p.name !== "我 (主揪)" &&
+											(reportedUsers.includes(p.id) ? (
+												<button
+													disabled
+													style={{
+														background: "none",
+														border: "none",
+														cursor: "not-allowed",
+														display: "flex",
+														alignItems: "center",
+														gap: "4px",
+														color: "#94a3b8",
+														fontSize: "13px",
+														fontWeight: "700",
+													}}
+													title="已檢舉"
+												>
+													<AlertTriangle size={16} />
+												</button>
+											) : (
+												<button
+													onClick={() => {
+														setShowReportModal(true);
+														setReportingUser(p.id);
+													}}
+													style={{
+														background: "none",
+														border: "none",
+														cursor: "pointer",
+														display: "flex",
+														alignItems: "center",
+														gap: "4px",
+														color: "#ef4444",
+														fontSize: "13px",
+														fontWeight: "700",
+													}}
+													title="檢舉"
+												>
+													<AlertTriangle size={16} />
+												</button>
+											))}
+									</div>
 								</div>
 							))}
 							{showListModal === "waitlist" && party.waitlist.length === 0 && (
@@ -1199,134 +1299,7 @@ function PartyDetail() {
 				</div>
 			)}
 
-			{/* 成員詳細資料 Modal */}
-			{selectedMember && (
-				<div
-					className="modal-overlay"
-					onClick={() => setSelectedMember(null)}
-					style={{ zIndex: 1100 }}
-				>
-					<div
-						className="modal-content"
-						onClick={(e) => e.stopPropagation()}
-						style={{
-							maxWidth: "320px",
-							textAlign: "center",
-							position: "relative",
-						}}
-					>
-						{isParticipant &&
-							String(selectedMember.id) !== String(currentUserId) &&
-							selectedMember.name !== "我 (使用者)" &&
-							selectedMember.name !== "我 (主揪)" &&
-							(reportedUsers.includes(selectedMember.id) ? (
-								<button
-									disabled
-									style={{
-										position: "absolute",
-										top: "16px",
-										right: "16px",
-										background: "none",
-										border: "none",
-										cursor: "not-allowed",
-										display: "flex",
-										alignItems: "center",
-										gap: "4px",
-										color: "#94a3b8",
-										fontSize: "13px",
-										fontWeight: "700",
-									}}
-								>
-									<AlertTriangle size={16} /> 已檢舉
-								</button>
-							) : (
-								<button
-									onClick={() => {
-										setShowReportModal(true);
-										setReportingUser(selectedMember.id);
-										setSelectedMember(null);
-									}}
-									style={{
-										position: "absolute",
-										top: "16px",
-										right: "16px",
-										background: "none",
-										border: "none",
-										cursor: "pointer",
-										display: "flex",
-										alignItems: "center",
-										gap: "4px",
-										color: "#ef4444",
-										fontSize: "13px",
-										fontWeight: "700",
-									}}
-								>
-									<AlertTriangle size={16} /> 檢舉
-								</button>
-							))}
-						<div
-							className="avatar-placeholder"
-							style={{
-								width: "80px",
-								height: "80px",
-								fontSize: "32px",
-								marginBottom: "16px",
-								margin: "0 auto 16px auto",
-							}}
-						>
-							{selectedMember.name.charAt(0)}
-						</div>
-						<h3 style={{ marginBottom: "8px" }}>{selectedMember.name}</h3>
-						<p
-							style={{
-								color: "var(--text-muted)",
-								fontSize: "14px",
-								marginBottom: "24px",
-							}}
-						>
-							成員聯繫資訊
-						</p>
 
-						<div
-							style={{
-								textAlign: "left",
-								backgroundColor: "#f1f5f9",
-								padding: "16px",
-								borderRadius: "12px",
-								marginBottom: "24px",
-							}}
-						>
-							<div
-								style={{
-									marginBottom: "12px",
-									display: "flex",
-									justifyContent: "space-between",
-								}}
-							>
-								<span style={{ color: "#64748b", fontSize: "13px" }}>
-									電話號碼
-								</span>
-								<span style={{ fontWeight: "700" }}>
-									{selectedMember.phone}
-								</span>
-							</div>
-							<div style={{ display: "flex", justifyContent: "space-between" }}>
-								<span style={{ color: "#64748b", fontSize: "13px" }}>
-									LINE / 通訊
-								</span>
-								<span style={{ fontWeight: "700" }}>{selectedMember.line}</span>
-							</div>
-						</div>
-
-						<button
-							className="login-button"
-							onClick={() => setSelectedMember(null)}
-						>
-							關閉
-						</button>
-					</div>
-				</div>
-			)}
 
 			{/* 等級不符警告 Modal */}
 			{showLevelWarningModal && (
@@ -1748,6 +1721,40 @@ function PartyDetail() {
 
 			{/* Toast Notification */}
 			{toastMsg && <div className="toast-message">{toastMsg}</div>}
+
+			{/* 簡單資料 Modal */}
+			{selectedMember && (
+				<div className="modal-overlay" onClick={() => setSelectedMember(null)} style={{ zIndex: 1100 }}>
+					<div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '320px', textAlign: 'center', position: 'relative' }}>
+						<div className="avatar-placeholder" style={{ width: '80px', height: '80px', fontSize: '32px', marginBottom: '16px', margin: '0 auto 16px auto', overflow: 'hidden', border: '3px solid #f1f5f9' }}>
+							{selectedMember.avatar ? (
+								<img src={selectedMember.avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+							) : (
+								selectedMember.name.charAt(0)
+							)}
+						</div>
+						<h3 style={{ marginBottom: '8px', fontSize: '20px' }}>{selectedMember.name}</h3>
+						<p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '24px' }}>聯絡資訊</p>
+						
+						<div style={{ textAlign: 'left', backgroundColor: '#f1f5f9', padding: '16px', borderRadius: '12px', marginBottom: '24px' }}>
+							<div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+								<span style={{ color: '#64748b', fontSize: '13px' }}>聯絡電話</span>
+								<span style={{ fontWeight: '700', fontSize: '15px' }}>{selectedMember.phone || '-'}</span>
+							</div>
+							<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+								<span style={{ color: '#64748b', fontSize: '13px' }}>LINE ID</span>
+								<span style={{ fontWeight: '700', fontSize: '15px' }}>{selectedMember.line || '-'}</span>
+							</div>
+							<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
+								<span style={{ color: '#64748b', fontSize: '13px' }}>Instagram</span>
+								<span style={{ fontWeight: '700', fontSize: '15px' }}>{selectedMember.instagram || '-'}</span>
+							</div>
+						</div>
+						
+						<button className="login-button" onClick={() => setSelectedMember(null)}>關閉</button>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

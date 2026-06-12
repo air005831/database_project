@@ -99,6 +99,14 @@ const gamesApi = {
    */
   deleteGame: (gameId) => {
     return axiosClient.delete(`/games/${gameId}/`);
+  },
+
+  /**
+   * 取得運動種類列表
+   * @returns {Promise}
+   */
+  getSports: () => {
+    return axiosClient.get('/sports/');
   }
 };
 

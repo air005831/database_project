@@ -1,215 +1,54 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CloudSun, MapPin, Clock, Bell, HelpCircle, Star } from 'lucide-react';
+import { CloudSun, MapPin, Clock, Bell, HelpCircle, Star, AlertTriangle, CheckCircle2, CalendarX } from 'lucide-react';
 import gamesApi from '../api/games';
 import notificationsApi from '../api/notifications';
 import weatherApi from '../api/weather';
 import adminApi from '../api/admin';
 import usersApi from '../api/users';
 import venuesApi from '../api/venues';
+import useGameStore from '../store/useGameStore';
+import SafeImage from '../components/SafeImage';
 import '../App.css';
 
 function Home() {
   const navigate = useNavigate();
+  const { parties, isPageLoading, fetchParties, connectSSE, disconnectSSE } = useGameStore();
 
-  // 狀態與 API 資料
-  const [parties, setParties] = useState([]);
+  // 1. 所有 State 宣告放在最前面
   const [reputationScore, setReputationScore] = useState(100);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAqiInfo, setShowAqiInfo] = useState(false);
   const [showLevelInfo, setShowLevelInfo] = useState(false);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [systemAnnouncements, setSystemAnnouncements] = useState([]);
   const [aqi, setAqi] = useState('--');
   const [temperature, setTemperature] = useState('--');
-  const [isPageLoading, setIsPageLoading] = useState(true);
+  const [weatherLocation, setWeatherLocation] = useState('桃園市');
   const [userProfile, setUserProfile] = useState(null);
-
-  // 動態場地資料狀態
-  const [allVenues, setAllVenues] = useState([]); // [{id, name, city, dist, sports, facilities}]
-  const [taiwanRegions, setTaiwanRegions] = useState({
-    '未選擇': { '未選擇': ['無場地'] }
-  });
-  const [venueFacilities, setVenueFacilities] = useState({});
-  const [venueMap, setVenueMap] = useState({});
-
-  // 載入初始資料
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // 並行取得多個 API，使用 allSettled 避免其中一個壞掉導致全掛
-        const results = await Promise.allSettled([
-          gamesApi.getGames(),
-          notificationsApi.getNotifications(),
-          weatherApi.getWeatherAqi(),
-          usersApi.getUserProfile(),
-          venuesApi.getCourts()
-        ]);
-        
-        const gamesResult = results[0].status === 'fulfilled' ? results[0].value : [];
-        const notificationsResult = results[1].status === 'fulfilled' ? results[1].value : [];
-        const weatherResult = results[2].status === 'fulfilled' ? results[2].value : {};
-        const userProfileResult = results[3].status === 'fulfilled' ? results[3].value : null;
-        const venuesResult = results[4].status === 'fulfilled' ? results[4].value : [];
-        
-        if (userProfileResult) {
-          setUserProfile(userProfileResult);
-        }
-
-        const venuesList = Array.isArray(venuesResult) ? venuesResult : (venuesResult.results || []);
-        if (venuesList.length > 0) {
-          const venueDict = {};
-          
-          // Aggregate courts into unique venues
-          venuesList.forEach(court => {
-            if (!court.venue_detail) return;
-            const v = court.venue_detail;
-            if (!venueDict[v.id]) {
-              venueDict[v.id] = {
-                id: v.id,
-                name: v.name,
-                city: v.address_detail?.city || '未分類縣市',
-                district: v.address_detail?.district || '未分類區域',
-                facilities: v.facilities || [],
-                sports: new Set()
-              };
-            }
-            if (court.sports && Array.isArray(court.sports)) {
-              court.sports.forEach(s => venueDict[v.id].sports.add(s));
-            }
-          });
-          
-          const aggregatedVenues = Object.values(venueDict).map(v => ({
-            ...v,
-            sports: Array.from(v.sports)
-          }));
-          
-          setAllVenues(aggregatedVenues);
-        }
-
-        const reverseLevelMap = {
-          'C': '休閒',
-          'B': '業餘',
-          'A': '高手',
-          'S': '高手',
-          '新手': '休閒',
-          '休閒': '休閒',
-          '高手': '高手'
-        };
-
-        // 處理後端 API 欄位命名與前端元件不一致的問題 (snake_case vs camelCase)
-        const formattedGames = (Array.isArray(gamesResult) ? gamesResult : gamesResult.results || []).map(party => {
-          const rawType = party.type || party.sport_type || party.sport_name || '運動';
-          const originalLevel = party.level || party.target_level || 'C';
-          const rawLevel = reverseLevelMap[originalLevel] || originalLevel;
-          let venueStatus = 'pending';
-          if (party.booking_status === '已佔到/已預約') {
-            venueStatus = 'confirmed';
-          } else if (party.booking_status === '未佔到/未預約') {
-            venueStatus = 'failed';
-          }
-          
-          return {
-            ...party,
-            id: party.id,
-            venueStatus: venueStatus,
-            title: party.game_name || party.title || party.description?.substring(0, 10) || '無標題揪團',
-            type: rawType,
-            level: rawLevel,
-            genderLimit: party.genderLimit || party.gender_limit || '不限',
-            location: party.location || party.venue_name || (party.venue_id ? `場地 ID: ${party.venue_id}` : '地點未定'),
-            time: party.time || (party.booking_date ? `${party.booking_date} ${party.time_slot || ''}` : '時間未定'),
-            currentPlayers: party.currentPlayers ?? party.current_players ?? 0,
-            maxPlayers: party.maxPlayers ?? party.most_players ?? party.max_players ?? 6,
-            currentWaitlist: party.currentWaitlist ?? party.current_waitlist ?? 0,
-            maxWaitlist: party.maxWaitlist ?? party.max_waitlist ?? 2,
-            description: party.game_note || party.description,
-            game_note: party.game_note,
-            participants: party.participants || [],
-            participant_ids: party.participant_ids || [],
-            waitlist_ids: party.waitlist_ids || [],
-            creator_id: party.creator_id,
-          };
-        });
-        
-        setParties(formattedGames);
-        const mappedNotifications = (Array.isArray(notificationsResult) ? notificationsResult : []).map(n => ({
-          id: n.notification_id || n.id,
-          text: n.message || n.text || '',
-          read: n.is_read !== undefined ? n.is_read : (n.read || false),
-          time: n.created_at ? new Date(n.created_at).toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : (n.time || ''),
-          match_id: n.match_id || n.game_id
-        }));
-
-        const validNotifications = mappedNotifications.filter(n => {
-          if (n.text && n.text.includes('場地狀態已更新')) {
-            const currentUserId = localStorage.getItem('user_id');
-            const party = formattedGames.find(g => g.id === n.match_id);
-            const isHost = party ? (party.creator_id === currentUserId || party.creator === currentUserId) : false;
-            if (isHost) return false;
-          }
-          return true;
-        });
-        setNotifications(validNotifications);
-        setAqi(weatherResult?.aqi ?? '--');
-        setTemperature(weatherResult?.temperature ?? '--');
-      } catch (error) {
-        console.error('Home fetchData error:', error);
-      } finally {
-        setIsPageLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  // 取得回饋類型
-  useEffect(() => {
-    adminApi.getFeedbackTypes()
-      .then(data => {
-        const list = Array.isArray(data) ? data : (data.results || []);
-        setFeedbackTypes(list);
-        if (list.length > 0) setFeedback(f => ({ ...f, type: f.type || list[0].name }));
-      })
-      .catch(() => {
-        // fallback：後端無表時使用預設
-        const defaults = [
-          { id: 1, name: '建議' },
-          { id: 2, name: '問題回報 (Bug)' },
-          { id: 3, name: '場地相關' },
-          { id: 4, name: '活動相關' },
-          { id: 5, name: '其他' },
-        ];
-        setFeedbackTypes(defaults);
-        setFeedback(f => ({ ...f, type: f.type || defaults[0].name }));
-      });
-  }, []);
-
-  // 通知輪詢：每 30 秒更新一次（Feature 6）
-  useEffect(() => {
-    const pollNotifications = setInterval(async () => {
-      try {
-        const data = await import('../api/notifications').then(m => m.default.getNotifications());
-        const list = Array.isArray(data) ? data : (data.results || []);
-        const mapped = list.map(n => ({
-          id: n.notification_id || n.id,
-          text: n.message,
-          time: n.created_at ? new Date(n.created_at).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '',
-          read: n.is_read,
-        }));
-        setNotifications(mapped);
-      } catch (err) {
-        // 靜默失敗
-      }
-    }, 30000);
-    return () => clearInterval(pollNotifications);
-  }, []);
-
+  const [alertData, setAlertData] = useState({ show: false, msg: '', type: 'error' });
+  const showAlert = (msg, type = 'error') => {
+    setAlertData({ show: true, msg, type });
+    if (type === 'success') {
+      setTimeout(() => {
+        setAlertData(prev => prev.show && prev.msg === msg ? { ...prev, show: false } : prev);
+      }, 1500);
+    }
+  };
+  const closeAlert = () => setAlertData({ ...alertData, show: false });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
-  const [feedback, setFeedback] = useState({ type: '', content: '' });
-  const [feedbackTypes, setFeedbackTypes] = useState([]);
+  const [feedbackTypes, setFeedbackTypes] = useState([
+    { id: 1, name: 'Bug 回報 (系統出錯)' },
+    { id: 2, name: '功能建議 (想要更多)' },
+    { id: 3, name: '場地/活動問題' },
+    { id: 4, name: '其他' }
+  ]);
+  const [feedback, setFeedback] = useState({ type: 'Bug 回報 (系統出錯)', content: '' });
   const [selectedFilterRegion, setSelectedFilterRegion] = useState('all');
+  const [selectedFilterDistrict, setSelectedFilterDistrict] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('全部');
   const [newParty, setNewParty] = useState({ 
     title: '', 
@@ -228,20 +67,124 @@ function Home() {
     maxPlayers: 4 
   });
 
+  const [allVenues, setAllVenues] = useState([]); 
+  const [taiwanRegions, setTaiwanRegions] = useState({
+    '未選擇': { '未選擇': ['無場地'] }
+  });
+  const [venueFacilities, setVenueFacilities] = useState({});
+  const [venueMap, setVenueMap] = useState({});
+  const [regions, setRegions] = useState(taiwanRegions);
+
+  // 2. 所有 Function 宣告
+  const fetchData = async (showLoading = true) => {
+    try {
+      const results = await Promise.allSettled([
+        fetchParties(showLoading),
+        notificationsApi.getNotifications(),
+        weatherApi.getWeatherAqi(),
+        usersApi.getUserProfile(),
+        venuesApi.getCourts(),
+        adminApi.getSystemAnnouncements()
+      ]);
+      
+      const notificationsResult = results[1].status === 'fulfilled' ? results[1].value : [];
+      const weatherResult = results[2].status === 'fulfilled' ? results[2].value : {};
+      const userProfileResult = results[3].status === 'fulfilled' ? results[3].value : null;
+      const venuesResult = results[4].status === 'fulfilled' ? results[4].value : [];
+      const announcementsResult = results[5]?.status === 'fulfilled' ? results[5].value : [];
+      
+      const rawAnnouncements = Array.isArray(announcementsResult) ? announcementsResult : (announcementsResult.results || []);
+      const mappedAnnouncements = rawAnnouncements.map(a => {
+        const photoRegex = /\n\n\[Photos\]\n([^\n]+)/;
+        const match = String(a.content || '').match(photoRegex);
+        let cleanContent = a.content || '';
+        let photo = [];
+        if (match) {
+          photo = match[1].split(',').filter(Boolean);
+          cleanContent = cleanContent.replace(photoRegex, '');
+        }
+        return {
+          ...a,
+          content: cleanContent,
+          photo: photo
+        };
+      });
+      setSystemAnnouncements(mappedAnnouncements);
+      
+      if (userProfileResult) {
+        setUserProfile(userProfileResult);
+        setReputationScore(userProfileResult.credit_point ?? 100);
+      }
+
+      const venuesList = Array.isArray(venuesResult) ? venuesResult : (venuesResult.results || []);
+      if (venuesList.length > 0) {
+        const venueDict = {};
+        venuesList.forEach(court => {
+          if (!court.venue_detail) return;
+          const v = court.venue_detail;
+          if (!venueDict[v.id]) {
+            venueDict[v.id] = {
+              id: v.id,
+              name: v.name,
+              city: v.city || v.address_detail?.city || '其他',
+              district: v.district || v.address_detail?.district || '其他',
+              facilities: v.facilities || [],
+              sports: new Set()
+            };
+          }
+          if (court.sports && Array.isArray(court.sports)) {
+            court.sports.forEach(s => venueDict[v.id].sports.add(s));
+          }
+        });
+        const aggregatedVenues = Object.values(venueDict).map(v => ({
+          ...v,
+          sports: Array.from(v.sports)
+        }));
+        setAllVenues(aggregatedVenues);
+      }
+
+      const mappedNotifications = (Array.isArray(notificationsResult) ? notificationsResult : []).map(n => ({
+        id: n.notification_id || n.id,
+        text: n.message || '',
+        read: n.is_read !== undefined ? n.is_read : false,
+        time: n.created_at ? new Date(n.created_at).toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '',
+        match_id: n.match_id || n.game_id
+      }));
+
+      const validNotifications = mappedNotifications.filter(n => {
+        if (n.text && n.text.includes('場地狀態已更新')) {
+          const currentUserId = localStorage.getItem('user_id');
+          const party = parties.find(g => g.id === n.match_id);
+          const isHost = party ? (String(party.creator_id) === String(currentUserId) || String(party.creator) === String(currentUserId)) : false;
+          if (isHost) return false;
+        }
+        return true;
+      });
+      setNotifications(validNotifications);
+      setAqi(weatherResult?.aqi ?? '--');
+      setTemperature(weatherResult?.temperature ?? '--');
+      if (weatherResult?.location) setWeatherLocation(weatherResult.location);
+    } catch (error) {
+      console.error('Home fetchData error:', error);
+    } finally {
+      if (showLoading) setIsPageLoading(false);
+    }
+  };
+
   const handleLogout = () => {
-    navigate('/');
+    navigate('/login');
   };
 
   const handleSendFeedback = async (e) => {
     e.preventDefault();
     try {
       await adminApi.submitFeedback(feedback);
-      alert('感謝您的回饋！管理員將會盡快查看。');
+      showAlert('感謝您的回饋！管理員將會盡快查看。', 'success');
       setIsFeedbackOpen(false);
-      setFeedback({ type: '建議', content: '' });
+      setFeedback({ type: feedbackTypes[0]?.name || 'Bug 回報 (系統出錯)', content: '' });
     } catch (error) {
       console.error('Feedback error:', error);
-      alert('送出失敗，請稍後再試。');
+      showAlert('送出失敗，請稍後再試。');
     }
   };
 
@@ -254,37 +197,18 @@ function Home() {
         (newParty.genderLimit === '限男' && userGender !== '男') ||
         (newParty.genderLimit === '限女' && userGender !== '女')
       ) {
-        alert(`主揪性別為「${userGender}」，無法發起「${newParty.genderLimit}」的揪團！`);
+        showAlert(`主揪性別為「${userGender}」，無法發起「${newParty.genderLimit}」的揪團！`);
         return;
       }
     }
 
-    // 檢查時間驗證
-    const selectedTime = new Date(newParty.time);
-    const now = new Date();
-    if (selectedTime < now) {
-      alert('活動時間不能設定在過去喔！');
-      return;
-    }
-
-    const priceNum = parseFloat(newParty.price);
-    if (isNaN(priceNum) || priceNum < 0 || priceNum > 10000) {
-      alert('費用金額必須在 0 到 10,000 之間喔！');
-      return;
-    }
-
-    // 程度驗證
-    const rankValue = { 'C': 1, 'B': 2, 'A': 3, 'S': 4 };
-    const requiredRank = {
-      '休閒': 1,
-      '業餘': 2,
-      '高手': 3
-    };
-    const userLevels = userProfile?.levels || {};
-    const userLevelInSport = userLevels[newParty.type] || 'C'; // 若未設定則預設為最低 C
+    const userLevelInSportStr = userProfile?.levels?.[newParty.type] || 'C';
+    const userLevelInSport = userLevelInSportStr.charAt(0).toUpperCase();
+    const rankValue = { 'S': 4, 'A': 3, 'B': 2, 'C': 1 };
+    const requiredRank = { '高手': 3, '業餘': 2, '休閒': 1 };
 
     if (rankValue[userLevelInSport] < requiredRank[newParty.level]) {
-      alert(`你的${newParty.type}程度為 ${userLevelInSport}，無法發起${newParty.level}喔！`);
+      showAlert(`你的${newParty.type}程度為 ${userLevelInSport}，無法發起${newParty.level}喔！`);
       return;
     }
 
@@ -296,16 +220,13 @@ function Home() {
       '麻將': 5
     };
 
-    const levelMap = {
-      '休閒': 'C',
-      '業餘': 'B',
-      '高手': 'A'
-    };
-
     const venue_id = venueMap[newParty.venue] || 1;
-
-    // 計算時間
     const dateObj = new Date(newParty.time);
+
+    if (dateObj < new Date()) {
+      showAlert('球局時間不能早於現在時間！');
+      return;
+    }
     const booking_date = dateObj.toISOString().split('T')[0]; // "YYYY-MM-DD"
     const startHour = dateObj.getHours().toString().padStart(2, '0');
     const startMin = dateObj.getMinutes().toString().padStart(2, '0');
@@ -320,59 +241,123 @@ function Home() {
 
     const payload = {
       sport_id: sportMap[newParty.type] || 1,
-      venue_id: venue_id,
+      venue_id,
       most_players: parseInt(newParty.maxPlayers, 10),
       least_players: parseInt(newParty.minPlayers, 10),
-      target_level: newParty.level || '休閒',
-      booking_date: booking_date,
+      target_level: newParty.level,
+      booking_date,
       start_time: `${startHour}:${startMin}`,
-      time_slot: time_slot,
+      time_slot,
       duration: newParty.duration,
       total_price: parseFloat(newParty.price) || 0,
       gender_limit: newParty.genderLimit,
       game_name: newParty.title,
-      game_note: newParty.description || '這是我剛發起的揪團，歡迎大家來玩！'
+      game_note: newParty.description
     };
 
     try {
-      const newGame = await gamesApi.createGame(payload);
-      
-      // 為了讓前端能立刻顯示，需要把後端回傳的資料轉成前端需要的格式
-      const rawType = newGame.type || newGame.sport_type || newGame.sport_name || newParty.type;
-      const rawLevel = newGame.level || newGame.target_level || newParty.level;
-      
-      const formattedNewGame = {
-        ...newGame,
-        id: newGame.id || Date.now(),
-        venueStatus: 'pending',
-        title: newGame.title || newGame.description?.substring(0, 10) || newParty.title || '無標題揪團',
-        type: rawType,
-        level: rawLevel,
-        genderLimit: newGame.genderLimit || newGame.gender_limit || newParty.genderLimit,
-        location: newGame.location || newGame.venue_name || newParty.venue,
-        description: newGame.game_note || newGame.description || newParty.description,
-        time: newGame.time || (newGame.booking_date ? `${newGame.booking_date} ${newGame.time_slot || ''}` : newParty.time.replace('T', ' ')),
-        currentPlayers: newGame.currentPlayers ?? newGame.current_players ?? 1,
-        maxPlayers: newGame.maxPlayers ?? newGame.most_players ?? newGame.max_players ?? parseInt(newParty.maxPlayers, 10),
-        currentWaitlist: newGame.currentWaitlist ?? newGame.current_waitlist ?? 0,
-        maxWaitlist: newGame.maxWaitlist ?? newGame.max_waitlist ?? 2,
-        participants: newGame.participants || ['我 (主揪)'],
-      };
-
-      setParties([formattedNewGame, ...parties]); 
+      await gamesApi.createGame(payload);
       setIsModalOpen(false);
       setNewParty({ 
         title: '', type: '籃球', level: '休閒', genderLimit: '不限', city: '桃園市', district: '桃園區', venue: '桃園國民運動中心', description: '', price: '', time: '', duration: '2 小時', minPlayers: 2, maxPlayers: 4 
       });
-      alert('發起成功！');
+      fetchData(false);
+      showAlert('發起成功！', 'success');
     } catch (error) {
       console.error('Create party error:', error);
       const backendError = error.response?.data ? JSON.stringify(error.response.data) : '伺服器未回應';
-      alert(`發起揪團失敗：${backendError}`);
+      showAlert(`發起揪團失敗：${backendError}`);
     }
   };
 
-  // 當選擇的運動類型或場地清單改變時，重新計算下拉選單的選項
+  const handleCityChange = (e) => {
+    const selectedCity = e.target.value;
+    const districts = taiwanRegions[selectedCity] || {};
+    const firstDistrict = Object.keys(districts)[0] || '';
+    const venuesList = districts[firstDistrict] || [];
+    const firstVenue = venuesList[0] || '其他';
+    setNewParty({
+      ...newParty,
+      city: selectedCity,
+      district: firstDistrict,
+      venue: firstVenue
+    });
+  };
+
+  const handleDistrictChange = (e) => {
+    const selectedDistrict = e.target.value;
+    const venuesList = taiwanRegions[newParty.city]?.[selectedDistrict] || [];
+    const firstVenue = venuesList[0] || '其他';
+    setNewParty({
+      ...newParty,
+      district: selectedDistrict,
+      venue: firstVenue
+    });
+  };
+
+  // 3. Effects
+  useEffect(() => {
+    fetchData();
+    // 降級方案：Metadata 每 30 秒更新一次即可
+    const poll = setInterval(() => fetchData(false), 30000);
+
+    // 主動推送機制 (Active Push via SSE)
+    connectSSE();
+
+    return () => {
+      clearInterval(poll);
+    };
+  }, []);
+
+  useEffect(() => {
+    venuesApi.getVenues().then(data => {
+      const list = Array.isArray(data) ? data : (data.results || []);
+      if (list.length > 0) {
+        const mergedRegions = { ...taiwanRegions };
+        const mergedFacilities = { ...venueFacilities };
+        const vMap = { ...venueMap };
+
+        list.forEach(v => {
+          const c = v.city || v.address_detail?.city || '其他';
+          const d = v.district || v.address_detail?.district || '其他';
+          if (!mergedRegions[c]) mergedRegions[c] = {};
+          if (!mergedRegions[c][d]) mergedRegions[c][d] = [];
+          mergedRegions[c][d].push(v.name);
+          mergedFacilities[v.name] = v.facilities;
+          vMap[v.name] = v.id;
+        });
+
+        // Clean up placeholder if active data exists
+        delete mergedRegions['未選擇'];
+
+        setTaiwanRegions(mergedRegions);
+        setRegions(mergedRegions);
+        setVenueFacilities(mergedFacilities);
+        setVenueMap(vMap);
+
+        // Pre-fill create party defaults using first available database records
+        const firstCity = Object.keys(mergedRegions)[0];
+        if (firstCity) {
+          const firstDist = Object.keys(mergedRegions[firstCity])[0] || '';
+          const firstVenue = (mergedRegions[firstCity][firstDist] || [])[0] || '';
+          setNewParty(prev => ({
+            ...prev,
+            city: firstCity,
+            district: firstDist,
+            venue: firstVenue
+          }));
+        }
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    adminApi.getFeedbackTypes().then(data => {
+      const list = Array.isArray(data) ? data : (data.results || []);
+      setFeedbackTypes(list);
+    });
+  }, []);
+
   useEffect(() => {
     if (allVenues.length === 0) return;
 
@@ -405,9 +390,11 @@ function Home() {
     const vMap = {};
 
     filteredVenues.forEach(v => {
-      if (!regions[v.city]) regions[v.city] = {};
-      if (!regions[v.city][v.district]) regions[v.city][v.district] = [];
-      regions[v.city][v.district].push(v.name);
+      const city = v.city || '其他';
+      const district = v.district || '其他';
+      if (!regions[city]) regions[city] = {};
+      if (!regions[city][district]) regions[city][district] = [];
+      regions[city][district].push(v.name);
       facilities[v.name] = v.facilities;
       vMap[v.name] = v.id;
     });
@@ -435,72 +422,138 @@ function Home() {
     }
   }, [newParty.type, allVenues]);
 
-  const handleCityChange = (e) => {
-    const selectedCity = e.target.value;
-    const firstDistrict = taiwanRegions[selectedCity] ? Object.keys(taiwanRegions[selectedCity])[0] : '';
-    const firstVenue = taiwanRegions[selectedCity] && taiwanRegions[selectedCity][firstDistrict] ? taiwanRegions[selectedCity][firstDistrict][0] : '';
-    setNewParty({
-      ...newParty,
-      city: selectedCity,
-      district: firstDistrict,
-      venue: firstVenue
-    });
-  };
-
-  const handleDistrictChange = (e) => {
-    const selectedDistrict = e.target.value;
-    const firstVenue = taiwanRegions[newParty.city] && taiwanRegions[newParty.city][selectedDistrict] ? taiwanRegions[newParty.city][selectedDistrict][0] : '';
-    setNewParty({
-      ...newParty,
-      district: selectedDistrict,
-      venue: firstVenue
-    });
+  const renderModalContent = () => {
+    if (!selectedAnnouncement) return null;
+    const content = selectedAnnouncement.content;
+    
+    // 1. 回饋回覆結構化格式
+    if (selectedAnnouncement.title === '系統通知' && content.includes('[Feedback]\n') && content.includes('[Reply]\n')) {
+      const parts = content.split('\n');
+      const feedbackHeaderIdx = parts.indexOf('[Feedback]');
+      const replyHeaderIdx = parts.indexOf('[Reply]');
+      
+      let feedbackText = '';
+      let replyText = '';
+      
+      if (feedbackHeaderIdx !== -1 && replyHeaderIdx !== -1) {
+        feedbackText = parts.slice(feedbackHeaderIdx + 1, replyHeaderIdx).join('\n').trim();
+        replyText = parts.slice(replyHeaderIdx + 1).join('\n').trim();
+      } else {
+        return <div style={{ whiteSpace: 'pre-wrap' }}>{content}</div>;
+      }
+      
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left', marginTop: '10px' }}>
+          <div style={{ padding: '14px 18px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', marginBottom: '6px' }}>您的意見回饋：</div>
+            <div style={{ fontSize: '14px', color: '#334155', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{feedbackText}</div>
+          </div>
+          <div style={{ padding: '14px 18px', backgroundColor: '#f0fdf4', borderRadius: '12px', border: '1px solid #bbf7d0', borderLeft: '4px solid #22c55e' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534', marginBottom: '6px' }}>
+              管理員回覆：
+            </div>
+            <div style={{ fontSize: '14px', color: '#14532d', lineHeight: '1.5', whiteSpace: 'pre-wrap', fontWeight: '500' }}>{replyText}</div>
+          </div>
+        </div>
+      );
+    }
+    
+    // 2. 檢舉通知格式
+    if (selectedAnnouncement.title === '系統通知' && content.startsWith('收到檢舉回覆：') && content.includes('管理員回覆：')) {
+      const cleanContent = content.replace('收到檢舉回覆：', '').trim();
+      const replyPrefix = '管理員回覆：';
+      const prefixIndex = cleanContent.indexOf(replyPrefix);
+      
+      let infoText = '';
+      let replyText = '';
+      
+      if (prefixIndex !== -1) {
+        infoText = cleanContent.substring(0, prefixIndex).trim();
+        replyText = cleanContent.substring(prefixIndex + replyPrefix.length).trim();
+      } else {
+        infoText = cleanContent;
+      }
+      
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left', marginTop: '10px' }}>
+          {infoText && (
+            <div style={{ padding: '14px 18px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', marginBottom: '6px' }}>檢舉詳情：</div>
+              <div style={{ fontSize: '14px', color: '#334155', lineHeight: '1.5' }}>{infoText}</div>
+            </div>
+          )}
+          {replyText && (
+            <div style={{ padding: '14px 18px', backgroundColor: '#f0fdf4', borderRadius: '12px', border: '1px solid #bbf7d0', borderLeft: '4px solid #22c55e' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534', marginBottom: '6px' }}>
+                管理員回覆：
+              </div>
+              <div style={{ fontSize: '14px', color: '#14532d', lineHeight: '1.5', whiteSpace: 'pre-wrap', fontWeight: '500' }}>{replyText}</div>
+            </div>
+          )}
+        </div>
+      );
+    }
+    
+    return <div style={{ whiteSpace: 'pre-wrap' }}>{content}</div>;
   };
 
   return (
     <div className="home-container">
-      {/* 導覽列 */}
       <nav className="navbar">
         <div className="navbar-logo">不揪ㄛ</div>
-        <div className="navbar-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div className="navbar-actions" style={{ display: 'flex', gap: '10px' }}>
           <div style={{ position: 'relative' }}>
-            <button 
-              className="btn-outline" 
-              style={{ position: 'relative', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              onClick={() => setShowNotifications(!showNotifications)}
-            >
-              <Bell size={18} color="#475569" />
-              {notifications.some(n => !n.read) && (
-                <span style={{ position: 'absolute', top: '-2px', right: '-2px', backgroundColor: '#ef4444', width: '10px', height: '10px', borderRadius: '50%' }}></span>
-              )}
+            <button className="btn-outline" onClick={() => setShowNotifications(!showNotifications)}>
+              <Bell size={18} />
             </button>
-            
-            {/* 通知中心下拉選單 */}
             {showNotifications && (
-              <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '12px', width: '300px', backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', zIndex: 1000, overflow: 'hidden', border: '1px solid #e2e8f0', textAlign: 'left' }}>
+              <>
+                <div 
+                  style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} 
+                  onClick={() => setShowNotifications(false)}
+                ></div>
+                <div className="notification-dropdown">
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', fontWeight: '700', color: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   通知中心
-                  <span 
-                    style={{ fontSize: '12px', color: '#7995a5', cursor: 'pointer', fontWeight: 'normal' }}
-                    onClick={async () => {
-                      const unreadNotifs = notifications.filter(n => !n.read);
-                      if (unreadNotifs.length > 0) {
-                        try {
-                          await Promise.all(unreadNotifs.map(n => notificationsApi.markAsRead(n.id)));
-                        } catch (e) { console.error('Failed to mark all as read', e); }
-                      }
-                      setNotifications(notifications.map(n => ({...n, read: true})));
-                    }}
-                  >
-                    全部標示為已讀
-                  </span>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <span 
+                      style={{ fontSize: '12px', color: '#7995a5', cursor: 'pointer', fontWeight: 'normal' }}
+                      onClick={async () => {
+                        const unreadNotifs = notifications.filter(n => !n.read);
+                        if (unreadNotifs.length > 0) {
+                          try {
+                             await Promise.all(unreadNotifs.map(n => notificationsApi.markAsRead(n.id)));
+                          } catch (e) { console.error('Failed to mark all as read', e); }
+                        }
+                        setNotifications(notifications.map(n => ({...n, read: true})));
+                      }}
+                    >
+                      全部標示為已讀
+                    </span>
+                    <span 
+                      style={{ fontSize: '12px', color: '#ef4444', cursor: 'pointer', fontWeight: 'normal' }}
+                      onClick={async () => {
+                        if (window.confirm('確定要刪除所有已讀通知嗎？')) {
+                          try {
+                            await notificationsApi.deleteAllNotifications();
+                            setNotifications(notifications.filter(n => !n.read));
+                          } catch (e) {
+                            console.error('Failed to delete read notifications', e);
+                            alert('刪除通知失敗，請稍後再試。');
+                          }
+                        }
+                      }}
+                    >
+                      一鍵刪除
+                    </span>
+                  </div>
                 </div>
                 <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
                   {notifications.length > 0 ? (
                     notifications.map(n => (
                       <div 
                         key={n.id} 
-                        style={{ padding: '12px 16px', borderBottom: '1px solid #f8fafc', display: 'flex', gap: '12px', cursor: 'pointer', backgroundColor: n.read ? 'white' : '#f0f9ff' }}
+                        style={{ padding: '12px 16px', borderBottom: '1px solid #f8fafc', display: 'flex', gap: '12px', cursor: 'pointer', backgroundColor: n.read ? 'white' : '#f0f9ff', alignItems: 'center' }}
                         onClick={async () => {
                           if (!n.read) {
                             try {
@@ -508,128 +561,193 @@ function Home() {
                             } catch (e) { console.error('Failed to mark as read', e); }
                           }
                           setNotifications(notifications.map(item => item.id === n.id ? {...item, read: true} : item));
+                          
+                          // 處理點擊通知以彈窗展開
+                          if (n.text) {
+                            const refMatch = n.text.match(/\(Ref:\s*#(\d+)\)/);
+                            let title = '系統通知';
+                            let content = n.text;
+                            let photos = [];
+                            
+                            if (refMatch) {
+                              const announcementId = Number(refMatch[1]);
+                              const found = systemAnnouncements.find(a => a.id === announcementId);
+                              if (found) {
+                                title = found.title.replace(/【通知 - 房主】|【通知 - 房間所有人】|【公告】/g, '').trim();
+                                photos = found.photo || [];
+                                if (!n.text.includes('給【')) {
+                                  content = found.content;
+                                }
+                                
+                                // 1. 清理 (Ref: #...) 標記與圖片區塊 [Photos]
+                                content = content.replace(/\(Ref:\s*#\d+\)/g, '').split('\n\n[Photos]')[0].trim();
+                                
+                                // 2. 清理重複的標題與冒號
+                                const escapedTitle = title.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                                const titleRegex = new RegExp(escapedTitle + '\\s*[:：]\\s*', 'g');
+                                content = content.replace(titleRegex, '').trim();
+                              }
+                            } else {
+                              if (n.text.includes('【系統公告】')) {
+                                const cleanText = n.text.replace('【系統公告】', '');
+                                const colonIndex = cleanText.indexOf('：');
+                                if (colonIndex !== -1) {
+                                  title = cleanText.substring(0, colonIndex).trim();
+                                  content = cleanText.substring(colonIndex + 1).trim();
+                                } else {
+                                  content = cleanText;
+                                }
+                              }
+                            }
+                            
+                            setSelectedAnnouncement({ title, content, time: n.time, photos });
+                          }
                         }}
                       >
-                        <div style={{ width: '8px', display: 'flex', justifyContent: 'center', paddingTop: '6px' }}>
+                        <div style={{ width: '8px', display: 'flex', justifyContent: 'center' }}>
                           {!n.read && <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#0284c7' }}></div>}
                         </div>
                         <div style={{ flex: 1 }}>
-                          <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: n.read ? '#64748b' : '#0f172a', lineHeight: '1.4' }}>{n.text}</p>
+                          <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: n.read ? '#64748b' : '#0f172a', lineHeight: '1.4' }}>
+                            {n.text.startsWith('【回饋處理通知】') ? '【回饋處理通知】' : (n.text.includes('\n') ? n.text.split('\n')[0] : n.text)}
+                          </p>
                           <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{n.time}</p>
                         </div>
+                        {/* 已讀後顯示刪除通知按鈕 */}
+                        {n.read && (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation(); // 阻止觸發外層已讀與彈窗事件
+                              if (window.confirm('確定要刪除此通知嗎？')) {
+                                try {
+                                  await notificationsApi.deleteNotification(n.id);
+                                  setNotifications(notifications.filter(item => item.id !== n.id));
+                                } catch (err) {
+                                  console.error('Failed to delete notification', err);
+                                  showAlert('刪除通知失敗，請稍後再試。');
+                                }
+                              }
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#94a3b8',
+                              cursor: 'pointer',
+                              fontSize: '18px',
+                              fontWeight: 'normal',
+                              padding: '4px 8px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginLeft: 'auto'
+                            }}
+                            title="刪除通知"
+                          >
+                            &times;
+                          </button>
+                        )}
                       </div>
                     ))
-                  ) : (
+                   ) : (
                     <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>目前沒有新通知</div>
                   )}
                 </div>
               </div>
+              </>
             )}
           </div>
-
           <button className="btn-outline" onClick={() => setIsFeedbackOpen(true)}>意見回饋</button>
           <button className="btn-primary" onClick={() => navigate('/profile')}>個人</button>
           <button className="btn-outline" onClick={handleLogout}>登出</button>
         </div>
       </nav>
 
-      {/* 內容區塊 */}
       <main className="main-content">
         <div className="content-header">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h2 style={{ marginBottom: 0 }}>揪團大廳</h2>
-            <div className="weather-widget">
-              <span className="weather-icon" style={{ display: 'flex' }}><CloudSun size={18} /></span>
-              <span>桃園市 {temperature === '--' ? '--' : `${temperature}°C`}</span>
-              <div 
-                style={{ position: 'relative', marginLeft: '8px', paddingLeft: '12px', borderLeft: '1px solid #cbd5e1', color: '#64748b', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}
-                onMouseEnter={() => setShowAqiInfo(true)}
-                onMouseLeave={() => setShowAqiInfo(false)}
-              >
-                <span>空氣品質 (AQI)：{aqi}</span>
-                <HelpCircle size={14} style={{ cursor: 'pointer', color: '#94a3b8' }} />
-                
-                {showAqiInfo && (
-                  <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: '8px', width: '360px', backgroundColor: '#1e293b', color: 'white', padding: '16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'normal', zIndex: 10, boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)', lineHeight: '1.5', cursor: 'default' }}>
-                    <div style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '16px' }}>空氣品質指標 (AQI) 與建議</div>
-                    
-                    <div style={{ display: 'grid', gridTemplateColumns: '70px 80px 1fr', gap: '12px', marginBottom: '8px', color: '#94a3b8', fontSize: '13px' }}>
-                      <div>AQI 區間</div>
-                      <div>空氣品質</div>
-                      <div>活動建議</div>
-                    </div>
-                    
-                    <div style={{ display: 'grid', gridTemplateColumns: '70px 80px 1fr', gap: '12px', padding: '12px 0', borderTop: '1px solid #334155' }}>
-                      <div>0 - 50</div>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}><span style={{ color: '#22c55e', fontSize: '14px', lineHeight: '1' }}>●</span> 良好</div>
-                      <div style={{ color: '#e2e8f0' }}>空氣品質極佳，非常適合戶外活動。</div>
-                    </div>
-                    
-                    <div style={{ display: 'grid', gridTemplateColumns: '70px 80px 1fr', gap: '12px', padding: '12px 0', borderTop: '1px solid #334155' }}>
-                      <div>51 - 100</div>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}><span style={{ color: '#eab308', fontSize: '14px', lineHeight: '1' }}>●</span> 普通</div>
-                      <div style={{ color: '#e2e8f0' }}>空氣品質尚可，極少數敏感族群可能產生症狀。</div>
-                    </div>
-                    
-                    <div style={{ display: 'grid', gridTemplateColumns: '70px 80px 1fr', gap: '12px', padding: '12px 0', borderTop: '1px solid #334155' }}>
-                      <div>101 - 150</div>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}><span style={{ color: '#f97316', fontSize: '14px', lineHeight: '1' }}>●</span> 敏感族群<br/>不健康</div>
-                      <div style={{ color: '#e2e8f0' }}>敏感族群可能會產生健康影響，應減少戶外劇烈活動。</div>
-                    </div>
-                    
-                    <div style={{ display: 'grid', gridTemplateColumns: '70px 80px 1fr', gap: '12px', padding: '12px 0', borderTop: '1px solid #334155' }}>
-                      <div>151 - 200</div>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}><span style={{ color: '#ef4444', fontSize: '14px', lineHeight: '1' }}>●</span> 所有族群<br/>不健康</div>
-                      <div style={{ color: '#e2e8f0' }}>對所有人的健康開始產生影響，應減少戶外活動。</div>
-                    </div>
-                    
-                    <div style={{ position: 'absolute', top: '-4px', left: '50%', transform: 'translateX(-50%)', width: '8px', height: '8px', backgroundColor: '#1e293b', borderRadius: '2px', rotate: '45deg' }}></div>
-                  </div>
-                )}
-              </div>
-            </div>
+          <h2>揪團大廳</h2>
+          <div className="weather-widget">
+            <span>{weatherLocation} {temperature}°C AQI:{aqi}</span>
           </div>
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-            {isPageLoading && <span style={{ color: '#94a3b8' }}>載入中...</span>}
-            <select className="region-select" value={selectedFilterRegion} onChange={e => setSelectedFilterRegion(e.target.value)}>
-              <option value="all">所有地區</option>
-              {Object.keys(taiwanRegions).map(city => (
-                <option key={city} value={city}>{city}</option>
-              ))}
+          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+            <select value={selectedFilterRegion} onChange={e => { setSelectedFilterRegion(e.target.value); setSelectedFilterDistrict('all'); }}>
+              <option value="all">所有縣市</option>
+              {Object.keys(regions).filter(c => c !== '未選擇').map(c => <option key={c} value={c}>{c}</option>)}
             </select>
+            {selectedFilterRegion !== 'all' && regions[selectedFilterRegion] && (
+              <select className="region-select" value={selectedFilterDistrict} onChange={e => setSelectedFilterDistrict(e.target.value)}>
+                <option value="all">所有區域</option>
+                {Object.keys(regions[selectedFilterRegion]).filter(d => d !== '未選擇').map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            )}
             <div className="filter-chips">
               {['全部', '籃球', '麻將', '桌球', '羽球', '排球'].map(cat => (
-                <span 
-                  key={cat} 
-                  className={`chip ${selectedCategory === cat ? 'active' : ''}`}
-                  onClick={() => setSelectedCategory(cat)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  {cat}
-                </span>
+                <span key={cat} className={`chip ${selectedCategory === cat ? 'active' : ''}`} onClick={() => setSelectedCategory(cat)}>{cat}</span>
               ))}
             </div>
           </div>
         </div>
-        {/* 卡片列表 */}
-        <div className="party-grid">
-          {parties
-            .filter(party => selectedFilterRegion === 'all' || party.location.includes(selectedFilterRegion))
-            .filter(party => selectedCategory === '全部' || party.type === selectedCategory)
-            .sort((a, b) => {
-              const currentUserId = localStorage.getItem('user_id');
-              const isAHost = currentUserId && (a.creator_id && String(a.creator_id) === String(currentUserId));
-              const isBHost = currentUserId && (b.creator_id && String(b.creator_id) === String(currentUserId));
 
-              if (isAHost && !isBHost) return -1;
-              if (!isAHost && isBHost) return 1;
-              return 0;
-            })
-            .map(party => {
+        <div className="party-grid">
+          {(() => {
+            const filteredParties = parties
+              .filter(party => selectedFilterRegion === 'all' || (party.location && party.location.includes(selectedFilterRegion)))
+              .filter(party => selectedFilterDistrict === 'all' || (party.location && party.location.includes(selectedFilterDistrict)))
+              .filter(party => selectedCategory === '全部' || party.type === selectedCategory)
+              .sort((a, b) => {
+                const currentUserId = localStorage.getItem('user_id');
+                const getPriority = (party) => {
+                const isHost = currentUserId && (
+                  (party.creator_id && String(party.creator_id) === String(currentUserId)) || 
+                  (party.participants?.[0]?.id && String(party.participants[0].id) === String(currentUserId)) || 
+                  party.participants?.[0] === '我 (主揪)' || 
+                  party.participants?.[0] === '主揪人' ||
+                  (party.user_id && String(party.user_id) === String(currentUserId))
+                );
+                if (isHost) return 1;
+                
+                const isParticipant = currentUserId && (
+                  party.participants?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
+                  party.participant_ids?.some(id => String(id) === String(currentUserId))
+                );
+                const isWaitlisted = currentUserId && (
+                  party.waitlist?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
+                  party.waitlist_ids?.some(id => String(id) === String(currentUserId))
+                );
+                if (isParticipant || isWaitlisted) return 2;
+                
+                return 3;
+              };
+
+              return getPriority(a) - getPriority(b);
+            });
+
+            if (filteredParties.length === 0) {
+              return (
+                <div style={{ padding: '60px 20px', textAlign: 'center', gridColumn: '1 / -1', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
+                  <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}><CalendarX size={48} color="#94a3b8" strokeWidth={1.5} /></div>
+                  <h3 style={{ color: '#475569', margin: '0 0 8px 0', fontSize: '18px', fontWeight: 'bold' }}>暫無球局，換你來揪吧！</h3>
+                  <p style={{ color: '#94a3b8', margin: 0, fontSize: '14px' }}>目前這個分類還沒有人發起揪團，點擊右下角發起第一場吧</p>
+                </div>
+              );
+            }
+
+            return filteredParties.map(party => {
             const currentUserId = localStorage.getItem('user_id');
-            const isHost = currentUserId && (party.creator_id && String(party.creator_id) === String(currentUserId));
-            const isParticipant = currentUserId && (party.participant_ids?.some(id => String(id) === String(currentUserId)));
-            const isWaitlisted = currentUserId && (party.waitlist_ids?.some(id => String(id) === String(currentUserId)));
+            const isHost = currentUserId && (
+              (party.creator_id && String(party.creator_id) === String(currentUserId)) || 
+              (party.participants?.[0]?.id && String(party.participants[0].id) === String(currentUserId)) || 
+              party.participants?.[0] === '我 (主揪)' || 
+              party.participants?.[0] === '主揪人' ||
+              (party.user_id && String(party.user_id) === String(currentUserId))
+            );
+            const isParticipant = currentUserId && (
+              party.participants?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
+              party.participant_ids?.some(id => String(id) === String(currentUserId))
+            );
+            const isWaitlisted = currentUserId && (
+              party.waitlist?.some(p => String(p.id || p.user_id || p) === String(currentUserId)) ||
+              party.waitlist_ids?.some(id => String(id) === String(currentUserId))
+            );
 
             const isFull = party.currentPlayers >= party.maxPlayers;
             const isWaitlistFull = party.currentWaitlist >= party.maxWaitlist;
@@ -682,10 +800,8 @@ function Home() {
               }
             }
 
-
-
             return (
-              <div key={party.id} className={`party-card clickable-card ${isHost ? 'hosted-party' : ''}`} onClick={() => navigate(`/party/${party.id}`, { state: { party } })}>
+              <div key={party.id} className={`party-card clickable-card ${isHost ? 'hosted-party' : (isParticipant || isWaitlisted) ? 'joined-party' : ''}`} onClick={() => navigate(`/party/${party.id}`, { state: { party } })}>
                 <div className="party-card-header">
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     {isHost && (
@@ -718,33 +834,29 @@ function Home() {
                 </div>
                 <h3 className="party-title">{party.title}</h3>
                 <div className="party-info">
-                  <p style={{ gap: '6px' }}><MapPin size={16} /> {party.location}</p>
-                  <p style={{ gap: '6px' }}><Clock size={16} /> {party.time}</p>
+                  <p><MapPin size={16} /> {party.location}</p>
+                  <p><Clock size={16} /> {party.time}</p>
                 </div>
                 <div className="party-card-footer">
-                  {badgeStatusText !== '已關閉' ? (
-                    <span className="player-count">目前人數: {party.currentPlayers} / {party.maxPlayers}</span>
-                  ) : (
-                    <span className="player-count"></span>
-                  )}
+                  <span className="player-count">目前人數: {party.currentPlayers} / {party.maxPlayers}</span>
                   <button className="btn-join" onClick={(e) => {
                     e.stopPropagation();
                     navigate(`/party/${party.id}`, { state: { party } });
                   }}>
-                    {isHost ? '管理' : isParticipant ? '已報名' : isWaitlisted ? '已候補' : isFull && isWaitlistFull ? '查看詳情' : isFull ? '排候補' : '報名參加'}
+                    {isHost ? '管理' : isParticipant ? '已參加' : isWaitlisted ? '已候補' : isFull && isWaitlistFull ? '名額已滿' : isFull ? '申請候補' : '報名參加'}
                   </button>
                 </div>
               </div>
             );
-          })}
+          });
+          })()}
         </div>
       </main>
 
-      {/* 右下角浮動發起按鈕 */}
       <div className="fab-container">
         <button className="fab-btn" onClick={() => {
           if (reputationScore <= 60) {
-            alert(`⚠️ 你的信譽分數過低（目前：${reputationScore}分），已遭到警告，目前無法發起新揪團。請保持良好參與紀錄以恢復信譽。`);
+            showAlert(`⚠️ 你的信譽分數過低（目前：${reputationScore}分），已遭到警告，目前無法發起新揪團。請保持良好參與紀錄以恢復信譽。`);
             return;
           }
           setIsModalOpen(true);
@@ -754,12 +866,12 @@ function Home() {
         </button>
       </div>
 
-      {/* 發起揪團 Modal */}
       {isModalOpen && (
         <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <h3>發起新揪團</h3>
+              <button type="button" className="modal-close" onClick={() => setIsModalOpen(false)}>×</button>
             </div>
             <form onSubmit={handleCreateParty}>
               <div className="form-group">
@@ -811,27 +923,9 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">性別限制</label>
                     <div style={{ display: 'flex', gap: '12px' }}>
-                      {['不限', '限男', '限女'].map(opt => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => setNewParty({...newParty, genderLimit: opt})}
-                          style={{
-                            flex: 1,
-                            padding: '14px 8px',
-                            fontSize: '15px',
-                            fontWeight: '700',
-                            borderRadius: '10px',
-                            border: `2px solid ${newParty.genderLimit === opt ? '#7995a5' : '#e2e8f0'}`,
-                            backgroundColor: newParty.genderLimit === opt ? '#7995a5' : 'white',
-                            color: newParty.genderLimit === opt ? 'white' : '#475569',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s',
-                          }}
-                        >
-                          {opt}
-                        </button>
-                      ))}
+                      <button type="button" className={`gender-btn ${newParty.genderLimit === '不限' ? 'active' : ''}`} onClick={() => setNewParty({...newParty, genderLimit: '不限'})}>不限</button>
+                      <button type="button" className={`gender-btn ${newParty.genderLimit === '限男' ? 'active' : ''}`} onClick={() => setNewParty({...newParty, genderLimit: '限男'})}>限男</button>
+                      <button type="button" className={`gender-btn ${newParty.genderLimit === '限女' ? 'active' : ''}`} onClick={() => setNewParty({...newParty, genderLimit: '限女'})}>限女</button>
                     </div>
                   </div>
                   <div className="form-group">
@@ -841,7 +935,7 @@ function Home() {
                       className="form-input custom-date-input" 
                       value={newParty.time} 
                       onChange={e => setNewParty({...newParty, time: e.target.value})} 
-                      min={new Date().toISOString().slice(0, 16)}
+                      min={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
                       required 
                     />
                   </div>
@@ -879,10 +973,25 @@ function Home() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">地點 (場館/球場)</label>
-                    <select className="form-input" value={newParty.venue} onChange={e => setNewParty({...newParty, venue: e.target.value})}>
-                      {(taiwanRegions[newParty.city]?.[newParty.district] || []).map(v => (
-                        <option key={v} value={v}>{v}</option>
-                      ))}
+                    <select 
+                      className="form-input" 
+                      value={newParty.venue} 
+                      onChange={e => setNewParty({...newParty, venue: e.target.value})}
+                      required
+                    >
+                      {(() => {
+                        const filtered = allVenues.filter(v => 
+                          v.city === newParty.city && 
+                          v.district === newParty.district && 
+                          (v.sports || []).includes(newParty.type)
+                        );
+                        if (filtered.length === 0) {
+                          return <option value="">此區域無提供該運動之場地</option>;
+                        }
+                        return filtered.map(v => (
+                          <option key={v.id} value={v.name}>{v.name}</option>
+                        ));
+                      })()}
                     </select>
                   </div>
                   <div className="form-group">
@@ -928,26 +1037,29 @@ function Home() {
                 />
               </div>
 
-              <button type="submit" className="login-button" style={{ marginTop: '16px' }}>確認發起</button>
+              <div style={{ display: 'flex', gap: '16px', marginTop: '24px' }}>
+                <button type="button" className="btn-outline" style={{ flex: 1, margin: 0, padding: '12px', borderRadius: '12px' }} onClick={() => setIsModalOpen(false)}>
+                  取消
+                </button>
+                <button type="submit" className="login-button" style={{ flex: 1, margin: 0, padding: '12px', borderRadius: '12px' }}>
+                  確認發起
+                </button>
+              </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* 意見回饋 Modal */}
       {isFeedbackOpen && (
         <div className="modal-overlay" onClick={() => setIsFeedbackOpen(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>意見回饋</h3>
-              <button className="modal-close" onClick={() => setIsFeedbackOpen(false)}>×</button>
-            </div>
+            <h3>意見回饋</h3>
             <form onSubmit={handleSendFeedback}>
               <div className="form-group">
                 <label className="form-label">回饋類型</label>
                 <select className="form-input" value={feedback.type} onChange={e => setFeedback({...feedback, type: e.target.value})}>
-                  {feedbackTypes.map(ft => (
-                    <option key={ft.id} value={ft.name}>{ft.name}</option>
+                  {feedbackTypes.map(t => (
+                    <option key={t.id} value={t.name}>{t.name}</option>
                   ))}
                 </select>
               </div>
@@ -968,8 +1080,38 @@ function Home() {
           </div>
         </div>
       )}
+
+      {selectedAnnouncement && (
+        <div className="modal-overlay" onClick={() => setSelectedAnnouncement(null)}>
+          <div className="modal-content">
+            {renderModalContent()}
+          </div>
+        </div>
+      )}
+
+      {alertData.show && (
+        <div className="modal-overlay" onClick={closeAlert} style={{ zIndex: 99999 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '350px', textAlign: 'center', padding: '32px', borderRadius: '20px' }}>
+            <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: alertData.type === 'success' ? '#dcfce3' : '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              {alertData.type === 'success' ? <CheckCircle2 size={32} color="#22c55e" /> : <AlertTriangle size={32} color="#ef4444" />}
+            </div>
+            {alertData.type !== 'success' && <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '12px', color: '#1e293b' }}>提示</h3>}
+            <p style={{ fontSize: '16px', color: '#475569', marginBottom: alertData.type === 'success' ? '0' : '24px', lineHeight: '1.5' }}>{alertData.msg}</p>
+            {alertData.type !== 'success' && (
+              <button 
+                className="btn-primary" 
+                onClick={closeAlert}
+                style={{ width: '100%', padding: '12px', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold' }}
+              >
+                我知道了
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default Home;
+

@@ -5,7 +5,7 @@ from .views import (
     GameMatchViewSet, FavoriteGameViewSet, ReportViewSet,
     AdminGameViewSet, AdminBroadcastViewSet, NotificationViewSet, OpenDataViewSet,
     AdminAnalyticsView, DemoWeatherView, FeedbackViewSet, FeedbackTypeViewSet,
-    AnnouncementViewSet, upload_image
+    AnnouncementViewSet, upload_image, stream_game_updates, stream_notification_updates, test_trigger_notification, TaiwanRegionViewSet
 )
 
 class OptionalSlashRouter(DefaultRouter):
@@ -29,10 +29,13 @@ router.register('announcements', AnnouncementViewSet, basename='announcement')
 router.register('feedback', FeedbackViewSet, basename='feedback')
 router.register('admin/feedbacks', FeedbackViewSet, basename='admin-feedback')
 router.register('feedback-types', FeedbackTypeViewSet, basename='feedback-type')
+router.register('taiwan_regions', TaiwanRegionViewSet, basename='taiwanregion')
 
 urlpatterns = [
+    path('games/stream/', stream_game_updates, name='games-stream'),
+    path('notifications/stream/', stream_notification_updates, name='notifications-stream'),
     path('', include(router.urls)),
-    
+
     # Custom non-viewset endpoints with optional trailing slash support
     re_path(r'^admin/venues/(?P<pk>\d+)/?$', VenueViewSet.as_view({'delete': 'destroy'}), name='admin-venue-delete'),
     re_path(r'^auth/register/?$', AuthRegisterView.as_view(), name='auth-register'),
@@ -46,4 +49,6 @@ urlpatterns = [
     re_path(r'^admin/demo/games/(?P<pk>\d+)/status/?$', AdminGameViewSet.as_view({'patch': 'change_status'}), name='admin-demo-game-status'),
     re_path(r'^admin/demo/weather/?$', DemoWeatherView.as_view(), name='admin-demo-weather'),
     re_path(r'^upload/?$', upload_image, name='upload-image'),
+    re_path(r'^admin/feedbacks/(?P<pk>\d+)/handle/?$', FeedbackViewSet.as_view({'put': 'handle_feedback'}), name='admin-feedback-handle'),
+    re_path(r'^notifications/test-trigger/?$', test_trigger_notification, name='notifications-test-trigger'),
 ]
