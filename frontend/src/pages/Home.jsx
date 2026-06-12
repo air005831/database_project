@@ -875,11 +875,6 @@ function Home() {
                     )}
                     <span className="party-type">{party.type}</span>
                     <span className="party-level">{party.level}</span>
-                    {party.venueStatus === 'confirmed' && (
-                      <span className="party-level" style={{ backgroundColor: '#10b981', color: 'white', fontWeight: 'bold' }}>
-                        ✅ 場地已確認
-                      </span>
-                    )}
                     {party.venueStatus === 'failed' && (
                       <span className="party-level" style={{ backgroundColor: '#ef4444', color: 'white', fontWeight: 'bold' }}>
                         ❌ 未借到場地
@@ -900,7 +895,16 @@ function Home() {
                 </div>
                 <h3 className="party-title">{party.title}</h3>
                 <div className="party-info">
-                  <p><MapPin size={16} /> {party.location}</p>
+                  <p style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <MapPin size={16} /> {party.location}
+                    </span>
+                    {party.venueStatus === 'confirmed' && (
+                      <span style={{ marginLeft: '12px', color: '#23c75f', fontWeight: '700', fontSize: '13px' }}>
+                        已確認
+                      </span>
+                    )}
+                  </p>
                   <p><Clock size={16} /> {party.time}</p>
                 </div>
                 <div className="party-card-footer">
