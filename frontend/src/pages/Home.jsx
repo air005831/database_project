@@ -375,6 +375,17 @@ function Home() {
           }
         });
         setDbRegions(map);
+
+        // 確保發起揪團的預設縣市與區域在資料庫中存在，否則動態切換為第一個
+        const cities = Object.keys(map);
+        if (cities.length > 0) {
+          setNewParty(prev => {
+            const hasCity = cities.includes(prev.city);
+            const city = hasCity ? prev.city : cities[0];
+            const district = hasCity && map[city].includes(prev.district) ? prev.district : (map[city][0] || '');
+            return { ...prev, city, district };
+          });
+        }
       }
     }).catch(err => {
       console.error('Lobby fetch regions error:', err);
