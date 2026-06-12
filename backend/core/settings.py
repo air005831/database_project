@@ -145,10 +145,10 @@ if mysql_available:
         'default': {
             'ENGINE': 'django.db.backends.mysql',
             'NAME': 'nojo',
-            'USER': 'partner_dev',
-            'PASSWORD': 'dpuWPzBN7q8noSYj',
-            'HOST': '26.232.235.50',
-            'PORT': '3306',
+            'USER': db_user,
+            'PASSWORD': db_password,
+            'HOST': db_host,
+            'PORT': db_port,
             'OPTIONS': {
                 'charset': 'utf8mb4',
             }
@@ -156,10 +156,10 @@ if mysql_available:
         'nojo_django_db': {
             'ENGINE': 'django.db.backends.mysql',
             'NAME': 'nojo_django_db',
-            'USER': 'partner_dev',
-            'PASSWORD': 'dpuWPzBN7q8noSYj',
-            'HOST': '26.232.235.50',
-            'PORT': '3306',
+            'USER': db_user,
+            'PASSWORD': db_password,
+            'HOST': db_host,
+            'PORT': db_port,
             'OPTIONS': {
                 'charset': 'utf8mb4',
             }
