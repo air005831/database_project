@@ -934,12 +934,26 @@ function Home() {
 
       {isModalOpen && (
         <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div className="modal-header">
-              <h3>發起新揪團</h3>
-              <button type="button" className="modal-close" onClick={() => setIsModalOpen(false)}>×</button>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 0, position: 'relative' }}>
+            <div className="modal-header" style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '72px',
+              backgroundColor: 'white',
+              borderBottom: '1px solid #f1f5f9',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0 32px',
+              zIndex: 10,
+              margin: 0
+            }}>
+              <h3 style={{ margin: 0 }}>發起新揪團</h3>
+              <button type="button" className="modal-close" style={{ padding: 0, margin: 0 }} onClick={() => setIsModalOpen(false)}>×</button>
             </div>
-            <form onSubmit={handleCreateParty}>
+            <form onSubmit={handleCreateParty} style={{ overflowY: 'auto', padding: '96px 32px 32px 32px', flex: 1 }}>
               <div className="form-group">
                 <label className="form-label">揪團標題</label>
                 <input required type="text" className="form-input" placeholder="例如：今晚巨蛋鬥牛缺二" value={newParty.title} onChange={e => setNewParty({...newParty, title: e.target.value})} />

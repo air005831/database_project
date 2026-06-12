@@ -1465,43 +1465,61 @@ function Admin() {
             width: '100%',
             maxWidth: '780px',
             maxHeight: '90vh',
-            overflowY: 'auto',
             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-            padding: '36px',
             position: 'relative',
             display: 'flex',
             flexDirection: 'column',
-            gap: '24px'
+            overflow: 'hidden'
           }}>
-            {/* Close button */}
-            <button 
-              onClick={handleCloseModal}
-              style={{
-                position: 'absolute',
-                top: '20px',
-                right: '20px',
-                background: 'none',
-                border: 'none',
-                fontSize: '24px',
-                cursor: 'pointer',
-                color: '#64748b',
-                width: '32px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '50%',
-                backgroundColor: '#f1f5f9'
-              }}
-            >
-              &times;
-            </button>
+            {/* Header (fixed at top) */}
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '76px',
+              backgroundColor: 'white',
+              borderBottom: '1px solid #f1f5f9',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0 36px',
+              zIndex: 10
+            }}>
+              <h3 style={{ margin: 0, fontSize: '22px', fontWeight: '800', color: '#1e293b' }}>
+                {editingVenueId ? "編輯場地資料" : "新增場地資料"}
+              </h3>
+              <button 
+                onClick={handleCloseModal}
+                type="button"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '50%',
+                  backgroundColor: '#f1f5f9'
+                }}
+              >
+                &times;
+              </button>
+            </div>
 
-            <h3 style={{ margin: 0, fontSize: '22px', fontWeight: '800', color: '#1e293b' }}>
-              {editingVenueId ? "編輯場地資料" : "新增場地資料"}
-            </h3>
-
-            <form onSubmit={handleAddVenue} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <form onSubmit={handleAddVenue} style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '24px',
+              overflowY: 'auto',
+              padding: '106px 36px 36px 36px',
+              maxHeight: '100%',
+              flex: 1
+            }}>
               
               {/* 基本資料網格 */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
