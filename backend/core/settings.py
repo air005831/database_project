@@ -27,6 +27,10 @@ SECRET_KEY = 'django-insecure-!#8^d=@b09*&yf+_&8c$z9t(tfwhvossgf@d!k=$6gu#j9++o-
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.ngrok-free.dev",
+    "https://*.trycloudflare.com",
+]
 
 
 # Application definition
@@ -96,7 +100,7 @@ def check_mysql_availability(host='localhost', port=3306, timeout=1.0):
         try:
             # 如果沒有 mysqlclient，嘗試使用 pymysql 並偽裝成 MySQLdb
             import pymysql
-            pymysql.version_info = (2, 2, 8, 'final', 0) # 欺騙 Django 的版本檢查
+            # pymysql.version_info = (2, 2, 8, 'final', 0) # 欺騙 Django 的版本檢查
             pymysql.install_as_MySQLdb()
             mysql_driver_installed = True
         except ImportError:
@@ -116,7 +120,7 @@ def check_mysql_availability(host='localhost', port=3306, timeout=1.0):
 import os
 db_host = os.environ.get('DB_HOST', 'localhost')
 db_port = int(os.environ.get('DB_PORT', '3306'))
-mysql_available, reason = check_mysql_availability(host="26.232.235.50", port=3306, timeout=5.0)
+mysql_available, reason = check_mysql_availability(host=db_host, port=db_port, timeout=5.0)
 if os.environ.get('FORCE_SQLITE') == 'True':
     mysql_available = False
     reason = "Forced by FORCE_SQLITE environment variable"
@@ -141,10 +145,10 @@ if mysql_available:
         'default': {
             'ENGINE': 'django.db.backends.mysql',
             'NAME': 'nojo',
-            'USER': 'partner_dev',
-            'PASSWORD': 'dpuWPzBN7q8noSYj',
-            'HOST': '26.232.235.50',
-            'PORT': '3306',
+            'USER': db_user,
+            'PASSWORD': db_password,
+            'HOST': db_host,
+            'PORT': db_port,
             'OPTIONS': {
                 'charset': 'utf8mb4',
             }
@@ -152,10 +156,10 @@ if mysql_available:
         'nojo_django_db': {
             'ENGINE': 'django.db.backends.mysql',
             'NAME': 'nojo_django_db',
-            'USER': 'partner_dev',
-            'PASSWORD': 'dpuWPzBN7q8noSYj',
-            'HOST': '26.232.235.50',
-            'PORT': '3306',
+            'USER': db_user,
+            'PASSWORD': db_password,
+            'HOST': db_host,
+            'PORT': db_port,
             'OPTIONS': {
                 'charset': 'utf8mb4',
             }
@@ -238,4 +242,18 @@ from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "ngrok-skip-browser-warning",
 ]
+
+# Media files configurations
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Fix Windows registry mime-type mapping issues for image files
+import mimetypes
+mimetypes.add_type("image/png", ".png", True)
+mimetypes.add_type("image/jpeg", ".jpg", True)
+mimetypes.add_type("image/jpeg", ".jpeg", True)
+mimetypes.add_type("image/gif", ".gif", True)
+mimetypes.add_type("image/webp", ".webp", True)
+
+
 

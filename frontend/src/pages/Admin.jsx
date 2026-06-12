@@ -1,30 +1,90 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, MapPinned, Bell, Plus, Trash2, ArrowLeft, TrendingUp, BarChart3, MessageSquarePlus, MessageSquareText, Wrench, RefreshCcw, UserCircle, CloudRain, CheckCircle, Settings } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { LayoutDashboard, MapPinned, Bell, Plus, Trash2, Pencil, ArrowLeft, TrendingUp, BarChart3, MessageSquarePlus, MessageSquareText, Wrench, RefreshCcw, UserCircle, CloudRain, CheckCircle, XCircle, Search, Filter, Users, ShieldBan, Eye, ChevronRight, Settings, ChevronDown } from 'lucide-react';
 import adminApi from '../api/admin';
 import venuesApi from '../api/venues';
 import gamesApi from '../api/games';
 import usersApi from '../api/users';
+import SafeImage from '../components/SafeImage';
 import '../App.css';
 
-// 縣市與區域對照表
-const CITY_DISTRICTS = {
-  '桃園市': ['桃園區','中壢區','平鎮區','八德區','楊梅區','蘆竹區','龜山區','大溪區','龍潭區','新屋區','觀音區','復興區'],
+const getSportBadgeStyle = (sportName) => {
+  switch (sportName) {
+    case '羽球':
+      return { backgroundColor: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd' };
+    case '籃球':
+      return { backgroundColor: '#ffedd5', color: '#c2410c', borderColor: '#fed7aa' };
+    case '網球':
+      return { backgroundColor: '#f0fdf4', color: '#15803d', borderColor: '#bbf7d0' };
+    case '桌球':
+      return { backgroundColor: '#fee2e2', color: '#b91c1c', borderColor: '#fecaca' };
+    case '排球':
+      return { backgroundColor: '#faf5ff', color: '#6b21a8', borderColor: '#f3e8ff' };
+    default:
+      return { backgroundColor: '#f1f5f9', color: '#475569', borderColor: '#e2e8f0' };
+  }
 };
 
-const SPORT_LIST = ['籃球','羽球','排球','桌球','麻將'];
+const getMatchStatusStyle = (status) => {
+  switch (status) {
+    case 'recruiting':
+      return { backgroundColor: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' };
+    case 'full':
+      return { backgroundColor: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' };
+    case 'started':
+      return { backgroundColor: '#ecfdf5', color: '#047857', borderColor: '#a7f3d0' };
+    case 'closed':
+      return { backgroundColor: '#f1f5f9', color: '#475569', borderColor: '#e2e8f0' };
+    case 'failed_to_start':
+      return { backgroundColor: '#fef2f2', color: '#b91c1c', borderColor: '#fecaca' };
+    default:
+      return { backgroundColor: '#f8fafc', color: '#64748b', borderColor: '#cbd5e1' };
+  }
+};
+
+
+const TAIWAN_CITIES_DISTRICTS = {
+  '桃園市': [
+    '桃園區', '中壢區', '平鎮區', '八德區', '楊梅區', '蘆竹區',
+    '大溪區', '龍潭區', '龜山區', '大園區', '觀音區', '新屋區', '復興區'
+  ],
+  '台北市': [
+    '中正區', '大同區', '中山區', '松山區', '大安區', '萬華區', 
+    '信義區', '士林區', '北投區', '內湖區', '南港區', '文山區'
+  ],
+  '新北市': [
+    '板橋區', '三重區', '中和區', '永和區', '新莊區', '新店區',
+    '土城區', '蘆洲區', '汐止區', '樹林區', '鶯歌區', '三峽區',
+    '淡水區', '瑞芳區', '五股區', '泰山區', '林口區', '深坑區',
+    '石碇區', '坪林區', '三芝區', '石門區', '八里區', '平溪區',
+    '雙溪區', '貢寮區', '金山區', '萬里區', '烏來區'
+  ],
+  '台中市': [
+    '中區', '東區', '南區', '西區', '北區', '北屯區', '西屯區', '南屯區',
+    '太平區', '大里區', '霧峰區', '烏日區', '丰原區', '后里區', '石岡區',
+    '東勢區', '和平區', '新社區', '潭子區', '大雅區', '神岡區', '大肚區',
+    '沙鹿區', '龍井區', '梧棲區', '清水區', '大甲區', '外埔區', '大安區'
+  ]
+};
 
 function Admin() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(location.state?.tab || 'dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 1024);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 1024);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  const [venueSubTab, setVenueSubTab] = useState('list');
+  const [announcementSubTab, setAnnouncementSubTab] = useState('list');
+  const [userSubTab, setUserSubTab] = useState('list');
 
-  // 場地狀態 (對接真實 API)
+  // 場地、揪團、公告狀態改為連線載入
   const [venues, setVenues] = useState([]);
-
-  // 揪團房間狀態 (對接真實 API)
   const [parties, setParties] = useState([]);
-
-  // 系統公告狀態 (對接真實 API)
   const [announcements, setAnnouncements] = useState([]);
 
   // 真實 API 資料
@@ -37,40 +97,198 @@ function Admin() {
     popular_sports: []
   });
 
-  // 載入後台資料
+  // 使用者與篩選狀態 (已提升宣告位置，防止 Temporal Dead Zone 錯誤)
+  const [newVenue, setNewVenue] = useState({ 
+    name: '', 
+    city: '桃園市', 
+    district: '桃園區', 
+    street_line: '', 
+    facilities: [], 
+    weekdays_hours: '08:00-22:00', 
+    weekends_hours: '08:00-22:00',
+    closed_days: []
+  });
+  const [regionsMap, setRegionsMap] = useState({});
+  const citiesToUse = Object.keys(regionsMap).length > 0 ? regionsMap : TAIWAN_CITIES_DISTRICTS;
+  const [courtCounts, setCourtCounts] = useState([{ sport_id: '', count: 1 }]);
+  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', photo: [] });
+  const [editingAnnouncement, setEditingAnnouncement] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [editFiles, setEditFiles] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [feedbackFilter, setFeedbackFilter] = useState('pending'); // 'pending' or 'handled'
+  const [replyingFeedbackId, setReplyingFeedbackId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [editingGameTimeId, setEditingGameTimeId] = useState(null);
+  const [editGameDate, setEditGameDate] = useState('');
+  const [editGameTimeSlot, setEditGameTimeSlot] = useState('');
+  const [demoSearchQuery, setDemoSearchQuery] = useState('');
+  const [demoSportFilter, setDemoSportFilter] = useState('全部');
+  const [filterCity, setFilterCity] = useState('');
+  const [filterDistrict, setFilterDistrict] = useState('');
+  const [users, setUsers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [weatherIndex, setWeatherIndex] = useState(80);
+
+  // 回饋類型管理狀態
+  const [feedbackTypes, setFeedbackTypes] = useState([]);
+  const [newTypeName, setNewTypeName] = useState('');
+  const [expandedVenueId, setExpandedVenueId] = useState(null);
+  const [newCourtName, setNewCourtName] = useState('');
+
+  // 系統公告 & 推播專用狀態
+  const [announcementTarget, setAnnouncementTarget] = useState('all'); // 'all', 'organizer', 'room_members'
+  const [selectedBroadcastGameId, setSelectedBroadcastGameId] = useState('');
+
+  // 會員管理 (User Management) 專用狀態
+  const [umSearchQuery, setUmSearchQuery] = useState('');
+  const [umUsers, setUmUsers] = useState([]);
+  const [umSelectedUser, setUmSelectedUser] = useState(null);
+  const [umSelectedUserDetail, setUmSelectedUserDetail] = useState(null);
+  const [umLoadingDetail, setUmLoadingDetail] = useState(false);
+  const [umEditScore, setUmEditScore] = useState('');
+  const [umIsLoadingUsers, setUmIsLoadingUsers] = useState(false);
+  const [allVenuesForFiltering, setAllVenuesForFiltering] = useState([]);
+  const [editingVenueId, setEditingVenueId] = useState(null);
+  const [filterSport, setFilterSport] = useState('');
+  const [sportsList, setSportsList] = useState([]);
+
+  // 個別球場管理專用狀態
+  const [selectedVenueForCourts, setSelectedVenueForCourts] = useState(null);
+  const [venueCourts, setVenueCourts] = useState([]);
+  const [isCourtsLoading, setIsCourtsLoading] = useState(false);
+  const [editingCourt, setEditingCourt] = useState(null);
+  const [newCourt, setNewCourt] = useState({ sports: [], base_price: 300, occupied: false });
+  const [isSavingCourt, setIsSavingCourt] = useState(false);
+
+  // 載入真實運動種類供篩選選單使用
+  useEffect(() => {
+    const fetchSports = async () => {
+      try {
+        const sportsData = await gamesApi.getSports();
+        setSportsList(sportsData || []);
+      } catch (error) {
+        console.error('Fetch sports error:', error);
+      }
+    };
+    fetchSports();
+  }, []);
+
+  // 載入真實縣市與區域資料（由資料庫撈取）
+  useEffect(() => {
+    const fetchRegions = async () => {
+      try {
+        const data = await venuesApi.getRegions();
+        if (Array.isArray(data)) {
+          const map = {};
+          data.forEach(item => {
+            if (!map[item.city]) {
+              map[item.city] = [];
+            }
+            if (!map[item.city].includes(item.district)) {
+              map[item.city].push(item.district);
+            }
+          });
+          setRegionsMap(map);
+
+          // 重新設定預設的縣市和區域，確保在資料庫中存在
+          const cities = Object.keys(map);
+          if (cities.length > 0) {
+            setNewVenue(prev => {
+              const hasCity = cities.includes(prev.city);
+              const city = hasCity ? prev.city : cities[0];
+              const district = hasCity && map[city].includes(prev.district) ? prev.district : (map[city][0] || '');
+              return { ...prev, city, district };
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Fetch regions error:', error);
+      }
+    };
+    fetchRegions();
+  }, []);
+
+  // 動態衍生篩選選單選項
+  const cityOptions = Object.keys(citiesToUse).length > 0 
+    ? Object.keys(citiesToUse) 
+    : [...new Set(allVenuesForFiltering.map(v => v.city).filter(Boolean))];
+  const districtOptions = filterCity
+    ? (citiesToUse[filterCity] || [])
+    : [];
+
+  const hasActiveFilter = !!(filterCity || filterDistrict || filterSport);
+
+  // 載入真實場地資料，當篩選條件（縣市/區域/球類）改變時重新向後端抓取
+  useEffect(() => {
+    const fetchVenues = async () => {
+      try {
+        const params = {};
+        if (filterCity) params.city = filterCity;
+        if (filterDistrict) params.district = filterDistrict;
+        if (filterSport) params.sport_id = filterSport;
+        
+        const venuesData = await venuesApi.getVenues(params);
+        const rawVenues = Array.isArray(venuesData) ? venuesData : (venuesData.results || []);
+        let mappedVenues = rawVenues.map(v => ({
+          id: v.id,
+          name: v.name,
+          city: v.address_detail?.city || '',
+          district: v.address_detail?.district || '',
+          address: v.address_detail?.street_line || '',
+          facilities: v.facilities || [],
+          opening_hours: v.opening_hours || null,
+          court_count: v.court_count || 0,
+          sport_ids: v.sport_ids || [],
+          sports: v.sports || [],
+          courts: v.courts || []
+        }));
+
+        // 如果目前沒有篩選條件，代表這是完整的場地列表，儲存下來用於動態生成篩選選單
+        if (!filterCity && !filterDistrict) {
+          setAllVenuesForFiltering(mappedVenues);
+        }
+
+        // 前端安全防呆篩選：如果後端 API 尚未實現過濾，前端進行二次過濾
+        if (filterCity) {
+          mappedVenues = mappedVenues.filter(v => v.city === filterCity);
+        }
+        if (filterDistrict) {
+          mappedVenues = mappedVenues.filter(v => v.district.includes(filterDistrict));
+        }
+        if (filterSport) {
+          mappedVenues = mappedVenues.filter(v =>
+            (v.sport_ids || []).includes(Number(filterSport))
+          );
+        }
+
+        setVenues(mappedVenues);
+      } catch (error) {
+        console.error('Fetch venues error:', error);
+      }
+    };
+    fetchVenues();
+  }, [filterCity, filterDistrict, filterSport, sportsList]);
+
+  // 載入後台資料 (採獨立 try-catch，防止單一 API 壞掉導致整頁空白)
   useEffect(() => {
     const fetchAdminData = async () => {
-      const [
-        analyticsRes,
-        feedbacksRes,
-        venuesRes,
-        announcementsRes,
-        gamesRes,
-        usersRes
-      ] = await Promise.allSettled([
-        adminApi.getAdminAnalytics(),
-        adminApi.getFeedbacks(),
-        venuesApi.getVenues(),
-        adminApi.getSystemAnnouncements(),
-        gamesApi.getGames(),
-        usersApi.getAllUsers()
-      ]);
 
-      // 1. 映射數據分析資料
-      if (analyticsRes.status === 'fulfilled') {
-        const analyticsData = analyticsRes.value;
+      // 2. 獨立載入數據分析
+      try {
+        const analyticsData = await adminApi.getAdminAnalytics();
         const mappedAnalytics = {
           active_users: analyticsData.active_users_today || 0,
           active_games: analyticsData.ongoing_games_count || 0,
-          system_messages: analyticsData.system_messages_count || 0,
+          system_messages: 0,
           daily_activity: [],
           popular_sports: []
         };
 
         if (analyticsData.activity_trend) {
-          const trend = analyticsData.activity_trend; // 已按 weekday 0~6 排序
-          const maxCount = Math.max(...trend.map(x => x.count), 1);
-          mappedAnalytics.daily_activity = trend.map(x => ({ height: (x.count / maxCount) * 100, weekday: x.weekday }));
+          const reversedTrend = [...analyticsData.activity_trend].reverse();
+          const maxCount = Math.max(...reversedTrend.map(x => x.count), 1);
+          mappedAnalytics.daily_activity = reversedTrend.map(x => (x.count / maxCount) * 100);
         } else {
           mappedAnalytics.daily_activity = [0, 0, 0, 0, 0, 0, 0];
         }
@@ -88,95 +306,96 @@ function Admin() {
           mappedAnalytics.popular_sports = [['無資料', '0%']];
         }
         setAnalytics(mappedAnalytics);
-      } else {
-        console.error('Analytics fetch error:', analyticsRes.reason);
+      } catch (error) {
+        console.error('Fetch analytics error:', error);
       }
 
-      // 2. 回饋資料
-      if (feedbacksRes.status === 'fulfilled') {
-        setFeedbacks(feedbacksRes.value || []);
-      } else {
-        console.error('Feedbacks fetch error:', feedbacksRes.reason);
+      // 3. 獨立載入使用者回饋
+      try {
+        const feedbacksData = await adminApi.getFeedbacks();
+        setFeedbacks(feedbacksData || []);
+      } catch (error) {
+        console.error('Fetch feedbacks error:', error);
       }
 
-      // 3. 映射場地資料
-      if (venuesRes.status === 'fulfilled') {
-        const venuesData = venuesRes.value;
-        const mappedVenues = (venuesData.results || venuesData || []).map(v => ({
-          id: v.id,
-          name: v.name,
-          city: v.address_detail?.city || '',
-          district: v.address_detail?.district || '',
-          facilities: v.facilities || []
-        }));
-        setVenues(mappedVenues);
-      } else {
-        console.error('Venues fetch error:', venuesRes.reason);
-      }
-
-      // 4. 映射系統公告資料
-      if (announcementsRes.status === 'fulfilled') {
-        const announcementsData = announcementsRes.value;
-        const mappedAnnouncements = (announcementsData.results || announcementsData || []).map(a => ({
-          id: a.id,
-          title: a.title,
-          content: a.content,
-          date: a.created_at ? a.created_at.split('T')[0] : ''
-        }));
+      // 4. 獨立載入真實公告
+      try {
+        const announcementsData = await adminApi.getSystemAnnouncements();
+        const rawAnnouncements = Array.isArray(announcementsData) ? announcementsData : (announcementsData.results || []);
+        const mappedAnnouncements = rawAnnouncements.map(a => {
+          const photoRegex = /\n\n\[Photos\]\n([^\n]+)/;
+          const match = String(a.content || '').match(photoRegex);
+          let cleanContent = a.content || '';
+          let photo = [];
+          if (match) {
+            photo = match[1].split(',').filter(Boolean);
+            cleanContent = cleanContent.replace(photoRegex, '');
+          }
+          return {
+            id: a.id,
+            title: a.title,
+            content: cleanContent,
+            photo: photo,
+            date: a.created_at ? new Date(a.created_at).toLocaleDateString() : ''
+          };
+        });
         setAnnouncements(mappedAnnouncements);
-      } else {
-        console.error('Announcements fetch error:', announcementsRes.reason);
+      } catch (error) {
+        console.error('Fetch announcements error:', error);
       }
 
-      // 5. 映射揪團房間資料 (用於 Demo 工具)
-      if (gamesRes.status === 'fulfilled') {
-        const gamesData = gamesRes.value;
-        const statusMap = {
-          'recruiting': '招募中',
-          'full': '已額滿',
-          'closed': '已結束',
-          'started': '已開始',
-          'failed_to_start': '流局'
-        };
-        const mappedParties = (gamesData.results || gamesData || []).map(g => ({
-          id: g.id,
-          title: g.game_name || '未命名球局',
-          status: statusMap[g.match_status] || g.match_status || '招募中',
-          time: g.booking_date ? `${g.booking_date} ${g.time_slot || ''}` : '時間未定',
-          location: g.venue_name || '未指定地點'
-        }));
+      // 5. 獨立載入真實球局 (Demo 工具用)
+      try {
+        let sportsListForMapping = sportsList;
+        if (sportsListForMapping.length === 0) {
+          try {
+            const sportsData = await gamesApi.getSports();
+            sportsListForMapping = sportsData || [];
+            setSportsList(sportsListForMapping);
+          } catch (err) {
+            console.error('Fetch sports in games load error:', err);
+          }
+        }
+
+        const gamesData = await gamesApi.getGames();
+        const rawGames = Array.isArray(gamesData) ? gamesData : (gamesData.results || []);
+        console.log('Demo Tool - rawGames:', rawGames);
+        const mappedParties = rawGames.map(g => {
+          const sObj = sportsListForMapping.find(s => String(s.id) === String(g.sport_id));
+          const nameVal = sObj ? sObj.name : (g.sport_name || '未分類');
+          return {
+            id: g.id,
+            title: g.game_name || g.title || '無標題',
+            status: g.match_status || '招募中',
+            time: `${g.booking_date || ''} ${g.time_slot || ''}`,
+            location: g.venue_name || '未指定地點',
+            sportName: nameVal
+          };
+        });
+        console.log('Demo Tool - mappedParties:', mappedParties);
         setParties(mappedParties);
-      } else {
-        console.error('Games fetch error:', gamesRes.reason);
+      } catch (error) {
+        console.error('Fetch games error:', error);
       }
 
-      // 6. 映射使用者資料
-      if (usersRes.status === 'fulfilled') {
-        const usersData = usersRes.value;
-        const mappedUsers = (usersData.results || usersData || []).map(u => ({
+      // 6. 獨立載入真實用戶 (Demo 工具用)
+      try {
+        const usersData = await usersApi.getAllUsers();
+        const rawUsers = Array.isArray(usersData) ? usersData : (usersData.results || []);
+        const mappedUsers = rawUsers.map(u => ({
           id: u.id,
           name: u.name || u.email || `User #${u.id}`,
-          reputation: u.credit_point ?? 100,
-          email: u.email
+          reputation: u.credit_point ?? 100
         }));
         setUsers(mappedUsers);
         if (mappedUsers.length > 0) {
           setSelectedUser(mappedUsers[0]);
         }
-      } else {
-        console.error('Users fetch error:', usersRes.reason);
+      } catch (error) {
+        console.error('Fetch users error:', error);
       }
 
-      // 7. 載入運動列表
-      try {
-        const sportsData = await import('../api/venues').then(m => m.default.getSports ? m.default.getSports() : fetch('/api/sports/').then(r => r.json()));
-        const sportsList = Array.isArray(sportsData) ? sportsData : (sportsData.results || []);
-        setAllSports(sportsList);
-      } catch (err) {
-        console.error('Sports fetch error:', err);
-      }
-
-      // 8. 載入回饋類型
+      // 7. 載入回饋類型
       try {
         const ftData = await adminApi.getFeedbackTypes();
         setFeedbackTypes(Array.isArray(ftData) ? ftData : (ftData.results || []));
@@ -187,50 +406,166 @@ function Admin() {
     fetchAdminData();
   }, []);
 
-  // 場地與球場管理
-  const [newVenue, setNewVenue] = useState({ name: '', city: '桃園市', district: '桃園區', facilities: [] });
-  const [expandedVenue, setExpandedVenue] = useState(null); // 展開球場的場館 id
-  const [newCourtForm, setNewCourtForm] = useState({ venueId: null, sportIds: [], basePrice: 300 });
-  const [allSports, setAllSports] = useState([]);
-  // 回饋類型管理
-  const [feedbackTypes, setFeedbackTypes] = useState([]);
-  const [newTypeName, setNewTypeName] = useState('');
-  const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '' });
+  // 載入會員管理列表
+  const handleFetchUmUsers = async (query = '') => {
+    setUmIsLoadingUsers(true);
+    try {
+      let data;
+      if (query.trim()) {
+        data = await usersApi.searchUsers(query);
+      } else {
+        data = await usersApi.getAllUsers();
+      }
+      const rawUsers = Array.isArray(data) ? data : (data.results || []);
+      setUmUsers(rawUsers);
+    } catch (error) {
+      console.error('Fetch user list error:', error);
+    } finally {
+      setUmIsLoadingUsers(false);
+    }
+  };
 
-  // 使用者清單與選取狀態 (對接真實 API)
-  const [users, setUsers] = useState([]);
-  const [selectedUser, setSelectedUser] = useState({ id: 0, name: '載入中...', reputation: 100 });
-  const [weatherIndex, setWeatherIndex] = useState(80);
+  const handleUmSearchSubmit = (e) => {
+    e.preventDefault();
+    handleFetchUmUsers(umSearchQuery);
+  };
 
-  // Demo 工具相關邏輯
+  // 當切換到會員管理分頁時，自動載入全部使用者
+  useEffect(() => {
+    if (activeTab === 'user_management') {
+      handleFetchUmUsers(umSearchQuery);
+    }
+  }, [activeTab]);
+
+  const handleSelectUmUser = async (user) => {
+    setUmSelectedUser(user);
+    setUmLoadingDetail(true);
+    setUmEditScore(user.credit_point ?? 90);
+    try {
+      const detail = await usersApi.getUserDetail(user.id);
+      setUmSelectedUserDetail(detail);
+    } catch (error) {
+      console.error('Fetch user detail error:', error);
+      // Fallback in case API is not fully set up on backend or returns error
+      setUmSelectedUserDetail({
+        ...user,
+        gender: user.gender || '男',
+        birthday: user.birthday || '未設定',
+        line_id: user.line_id || '無',
+        instagram: user.instagram || '無',
+        bio: user.bio || '未設定',
+        hosted_matches: [],
+        joined_matches: []
+      });
+    } finally {
+      setUmLoadingDetail(false);
+    }
+  };
+
+  const handleBanUser = async (userId) => {
+    if (!window.confirm('確定要暫停此會員的帳號權限嗎？')) return;
+    try {
+      await usersApi.banUser(userId);
+      alert('已成功暫停該帳號 (Ban)');
+      // 更新狀態
+      if (umSelectedUser && umSelectedUser.id === userId) {
+        setUmSelectedUser(prev => ({ ...prev, is_active: false }));
+        if (umSelectedUserDetail) {
+          setUmSelectedUserDetail(prev => ({ ...prev, is_active: false }));
+        }
+      }
+      setUmUsers(prev => prev.map(u => u.id === userId ? { ...u, is_active: false } : u));
+    } catch (error) {
+      console.error('Ban user error:', error);
+      alert(error.response?.data?.detail || '暫停帳號失敗，請稍後再試。');
+    }
+  };
+
+  const handleUnbanUser = async (userId) => {
+    if (!window.confirm('確定要恢復此會員的帳號權限嗎？')) return;
+    try {
+      await usersApi.unbanUser(userId);
+      alert('已成功恢復該帳號權限');
+      // 更新狀態
+      if (umSelectedUser && umSelectedUser.id === userId) {
+        setUmSelectedUser(prev => ({ ...prev, is_active: true }));
+        if (umSelectedUserDetail) {
+          setUmSelectedUserDetail(prev => ({ ...prev, is_active: true }));
+        }
+      }
+      setUmUsers(prev => prev.map(u => u.id === userId ? { ...u, is_active: true } : u));
+    } catch (error) {
+      console.error('Unban user error:', error);
+      alert(error.response?.data?.detail || '恢復帳號權限失敗，請稍後再試。');
+    }
+  };
+
+  const handleUpdateUmReputation = async (userId, score) => {
+    const intScore = parseInt(score, 10);
+    if (isNaN(intScore) || intScore < 0 || intScore > 100) {
+      alert('信譽積分必須在 0 到 100 之間。');
+      return;
+    }
+    try {
+      await adminApi.updateUserReputation(userId, intScore);
+      alert(`已將該會員的信譽積分調整為：${intScore}`);
+      // 更新狀態
+      if (umSelectedUser && umSelectedUser.id === userId) {
+        setUmSelectedUser(prev => ({ ...prev, credit_point: intScore }));
+        if (umSelectedUserDetail) {
+          setUmSelectedUserDetail(prev => ({ ...prev, credit_point: intScore }));
+        }
+      }
+      setUmUsers(prev => prev.map(u => u.id === userId ? { ...u, credit_point: intScore } : u));
+      // 同步更新 Demo 工具箱的 users 狀態，以防資料不同步
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, reputation: intScore } : u));
+      if (selectedUser && selectedUser.id === userId) {
+        setSelectedUser(prev => ({ ...prev, reputation: intScore }));
+      }
+    } catch (error) {
+      console.error('Update reputation error:', error);
+      alert(error.response?.data?.detail || '調整信譽積分失敗，請稍後再試。');
+    }
+  };
+
+  // Demo 工具相關邏輯 (串接真實 API)
   const handleUpdateReputation = async (score) => {
-    if (!selectedUser?.id) return;
+    if (!selectedUser) return;
     try {
       await adminApi.updateUserReputation(selectedUser.id, score);
       setUsers(users.map(u => u.id === selectedUser.id ? { ...u, reputation: score } : u));
       setSelectedUser({ ...selectedUser, reputation: score });
+      
+      // 同步更新會員管理狀態中的分數
+      setUmUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, credit_point: score } : u));
+      if (umSelectedUser && umSelectedUser.id === selectedUser.id) {
+        setUmSelectedUser(prev => ({ ...prev, credit_point: score }));
+        if (umSelectedUserDetail) {
+          setUmSelectedUserDetail(prev => ({ ...prev, credit_point: score }));
+        }
+      }
       alert(`玩家 ${selectedUser.name} 的信譽積分已調整為：${score}`);
     } catch (error) {
-      console.error('Update user reputation error:', error);
-      alert('調整信譽積分失敗');
+      console.error('Update reputation error:', error);
+      alert('調整信譽積分失敗，請確認伺服器狀態。');
     }
   };
 
   const handleUpdatePartyStatus = async (id, newStatus, newTime) => {
-    const backendStatusMap = {
-      '即將開始': 'full',
-      '已開始': 'started',
+    const statusMap = {
+      '即將開始': 'recruiting',
+      '已開始': 'playing',
       '已結束': 'closed',
       '招募中': 'recruiting'
     };
-    const backendStatus = backendStatusMap[newStatus] || newStatus;
+    const backendStatus = statusMap[newStatus] || newStatus;
     try {
       await adminApi.updateDemoGameStatus(id, { status: backendStatus });
       setParties(parties.map(p => p.id === id ? { ...p, status: newStatus, time: newTime || p.time } : p));
       alert(`房間狀態已變更為：${newStatus}`);
     } catch (error) {
-      console.error('Update game status error:', error);
-      alert('調整房間狀態失敗');
+      console.error('Update party status error:', error);
+      alert('狀態更新失敗，請確認伺服器狀態。');
     }
   };
 
@@ -241,107 +576,145 @@ function Admin() {
     return { label: '狀態良好', color: '#10b981' };
   };
 
+  const handleStartEdit = (venue) => {
+    setEditingVenueId(venue.id);
+    const firstSportName = venue.sports?.[0];
+    const sportObj = sportsList.find(s => s.name === firstSportName);
+    setNewVenue({
+      name: venue.name,
+      city: venue.city,
+      district: venue.district,
+      street_line: venue.address,
+      sport_id: sportObj ? String(sportObj.id) : '',
+      court_count: venue.court_count || 1,
+      facilities: venue.facilities || [],
+      weekdays_hours: venue.opening_hours?.weekdays || '08:00-22:00',
+      weekends_hours: venue.opening_hours?.weekends || '08:00-22:00',
+      closed_days: venue.opening_hours?.closed_days || []
+    });
+    document.getElementById('add-venue-form')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingVenueId(null);
+    setNewVenue({ 
+      name: '', 
+      city: '桃園市', 
+      district: '桃園區', 
+      street_line: '', 
+      facilities: [],
+      weekdays_hours: '08:00-22:00',
+      weekends_hours: '08:00-22:00',
+      closed_days: []
+    });
+    setCourtCounts([{ sport_id: '', count: 1 }]);
+  };
+
   const handleAddVenue = async (e) => {
     e.preventDefault();
-    if (!newVenue.name || !newVenue.district) return;
-    try {
-      const created = await adminApi.createVenue({
-        name: newVenue.name,
-        city: newVenue.city,
-        district: newVenue.district,
-        facilities: newVenue.facilities
-      });
-      const mapped = {
-        id: created.id,
-        name: created.name,
-        city: created.address_detail?.city || newVenue.city,
-        district: created.address_detail?.district || newVenue.district,
-        facilities: created.facilities || newVenue.facilities,
-        courts: []
-      };
-      setVenues([...venues, mapped]);
-      setNewVenue({ name: '', city: '桃園市', district: '桃園區', facilities: [] });
-      alert('場地已新增！');
-    } catch (error) {
-      console.error('Create venue error:', error);
-      alert('新增場地失敗');
-    }
-  };
+    if (!newVenue.name) return;
 
-  const handleAddCourt = async (venueId) => {
-    if (newCourtForm.sportIds.length === 0) {
-      alert('請至少選擇一種運動類型');
-      return;
-    }
-    try {
-      const created = await adminApi.createCourt({
-        venue: venueId,
-        base_price: newCourtForm.basePrice,
-        sport_ids: newCourtForm.sportIds
-      });
-      // 更新場館的球場列表
-      setVenues(venues.map(v => v.id === venueId ? {
-        ...v,
-        courts: [...(v.courts || []), {
-          id: created.id,
-          sports: created.sports || [],
-          base_price: created.base_price || newCourtForm.basePrice
-        }]
-      } : v));
-      setNewCourtForm({ venueId: null, sportIds: [], basePrice: 300 });
-      alert('球場已新增！');
-    } catch (error) {
-      console.error('Create court error:', error);
-      alert('新增球場失敗：' + (error.response?.data?.detail || ''));
-    }
-  };
+    // Filter and build court_counts payload
+    const activeCourtCounts = editingVenueId ? [] : courtCounts
+      .filter(item => item.sport_id && item.count > 0)
+      .map(item => ({
+        sport_id: parseInt(item.sport_id, 10),
+        count: parseInt(item.count, 10)
+      }));
 
-  const handleDeleteCourt = async (venueId, courtId) => {
-    if (!window.confirm('確定要刪除此球場嗎？')) return;
-    try {
-      await adminApi.deleteCourt(courtId);
-      setVenues(venues.map(v => v.id === venueId ? {
-        ...v,
-        courts: (v.courts || []).filter(c => c.id !== courtId)
-      } : v));
-    } catch (error) {
-      alert('刪除球場失敗：' + (error.response?.data?.detail || ''));
+    if (!editingVenueId && activeCourtCounts.length > 0) {
+      const uniqueSportIds = new Set(activeCourtCounts.map(item => item.sport_id));
+      if (uniqueSportIds.size !== activeCourtCounts.length) {
+        alert('請勿選擇重複的運動種類！');
+        return;
+      }
     }
-  };
 
-  const handleAddFeedbackType = async (e) => {
-    e.preventDefault();
-    if (!newTypeName.trim()) return;
-    try {
-      const created = await adminApi.createFeedbackType(newTypeName.trim());
-      setFeedbackTypes([...feedbackTypes, created]);
-      setNewTypeName('');
-    } catch (error) {
-      alert('新增類型失敗：' + (error.response?.data?.detail || '已存在相同名稱'));
-    }
-  };
+    const payload = {
+      name: newVenue.name,
+      city: newVenue.city,
+      district: newVenue.district,
+      street_line: newVenue.street_line,
+      court_counts: activeCourtCounts,
+      opening_hours: { 
+        weekdays: newVenue.weekdays_hours || "08:00-22:00", 
+        weekends: newVenue.weekends_hours || "08:00-22:00",
+        closed_days: newVenue.closed_days || []
+      },
+      types: "indoor",
+      latitude: 25.0116,
+      longitude: 121.4617,
+      facilities: newVenue.facilities
+    };
 
-  const handleDeleteFeedbackType = async (id) => {
-    if (!window.confirm('確定要刪除此回饋類型嗎？')) return;
     try {
-      await adminApi.deleteFeedbackType(id);
-      setFeedbackTypes(feedbackTypes.filter(ft => ft.id !== id));
+      if (editingVenueId) {
+        // 編輯模式
+        const response = await venuesApi.updateVenue(editingVenueId, payload);
+        const updatedV = {
+          id: editingVenueId,
+          name: response.name || newVenue.name,
+          city: response.address_detail?.city || newVenue.city,
+          district: response.address_detail?.district || newVenue.district,
+          address: response.address_detail?.street_line || newVenue.street_line,
+          facilities: response.facilities && response.facilities.length > 0 ? response.facilities : newVenue.facilities,
+          court_count: response.court_count !== undefined ? response.court_count : 0,
+          sports: response.sports || [],
+          opening_hours: response.opening_hours || payload.opening_hours
+        };
+        setVenues(venues.map(v => v.id === editingVenueId ? updatedV : v));
+        setAllVenuesForFiltering(allVenuesForFiltering.map(v => v.id === editingVenueId ? updatedV : v));
+        setEditingVenueId(null);
+        setNewVenue({ 
+          name: '', 
+          city: '桃園市', 
+          district: '桃園區', 
+          street_line: '', 
+          facilities: [],
+          weekdays_hours: '08:00-22:00',
+          weekends_hours: '08:00-22:00',
+          closed_days: []
+        });
+        setCourtCounts([{ sport_id: '', count: 1 }]);
+        alert('場地已更新完成！');
+      } else {
+        // 新增模式
+        const response = await venuesApi.createVenue(payload);
+        const newV = {
+          id: response.id || Date.now(),
+          name: response.name || newVenue.name,
+          city: response.address_detail?.city || newVenue.city,
+          district: response.address_detail?.district || newVenue.district,
+          address: response.address_detail?.street_line || newVenue.street_line,
+          facilities: response.facilities && response.facilities.length > 0 ? response.facilities : newVenue.facilities,
+          court_count: response.court_count !== undefined ? response.court_count : activeCourtCounts.reduce((sum, item) => sum + item.count, 0),
+          sports: response.sports || activeCourtCounts.map(item => sportsList.find(s => s.id === item.sport_id)?.name).filter(Boolean),
+          opening_hours: response.opening_hours || payload.opening_hours
+        };
+        setVenues([...venues, newV]);
+        setAllVenuesForFiltering([...allVenuesForFiltering, newV]);
+        setNewVenue({ 
+          name: '', 
+          city: '桃園市', 
+          district: '桃園區', 
+          street_line: '', 
+          facilities: [],
+          weekdays_hours: '08:00-22:00',
+          weekends_hours: '08:00-22:00',
+          closed_days: []
+        });
+        setCourtCounts([{ sport_id: '', count: 1 }]);
+        alert('場地已新增至後端並自動生成球場！');
+      }
     } catch (error) {
-      alert('刪除失敗');
+      console.error('Save venue error:', error);
+      alert('儲存場地資料失敗，請確認後端 API 設定！');
     }
   };
 
   const handleDeleteVenue = async (id) => {
     const venueToDelete = venues.find(v => v.id === id);
     if (!venueToDelete) return;
-
-    // 檢查是否有正在進行中的揪團使用此場地
-    const isVenueInUse = parties.some(p => p.location && p.location.includes(venueToDelete.name));
-    
-    if (isVenueInUse) {
-      alert(`無法刪除！目前有揪團正在使用「${venueToDelete.name}」。\n請先確保該場地無人使用後再嘗試刪除。`);
-      return;
-    }
 
     if (window.confirm(`確定要刪除場地「${venueToDelete.name}」嗎？`)) {
       if (window.confirm('請再次確認，刪除後將無法復原！確定要刪除嗎？')) {
@@ -351,29 +724,170 @@ function Admin() {
           alert('場地已成功刪除。');
         } catch (error) {
           console.error('Delete venue error:', error);
-          alert('刪除場地失敗');
+          const errorDetail = error.response?.data?.detail || '刪除場地失敗，請確認該場地是否被使用中。';
+          alert(errorDetail);
         }
       }
+    }
+  };
+
+  const handleOpenCourtManager = async (venue) => {
+    setSelectedVenueForCourts(venue);
+    setEditingCourt(null);
+    setNewCourt({ sports: [], base_price: 300, occupied: false });
+    await fetchVenueCourts(venue.id);
+  };
+
+  const fetchVenueCourts = async (venueId) => {
+    setIsCourtsLoading(true);
+    try {
+      const response = await venuesApi.getCourts();
+      const rawCourts = Array.isArray(response) ? response : (response.results || []);
+      const filtered = rawCourts.filter(c => c.venue === venueId);
+      setVenueCourts(filtered);
+    } catch (error) {
+      console.error('取得該場館球場列表失敗:', error);
+    } finally {
+      setIsCourtsLoading(false);
+    }
+  };
+
+  const handleCourtFormSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedVenueForCourts) return;
+    if (newCourt.sports.length === 0) {
+      alert('請至少選擇一種支援的運動項目！');
+      return;
+    }
+
+    setIsSavingCourt(true);
+    const payload = {
+      venue: selectedVenueForCourts.id,
+      sports: newCourt.sports,
+      base_price: parseInt(newCourt.base_price, 10) || 0,
+      occupied: newCourt.occupied
+    };
+
+    try {
+      if (editingCourt) {
+        // 更新球場
+        await venuesApi.updateCourt(editingCourt.id, payload);
+        alert('球場資訊已成功更新！');
+      } else {
+        // 新增球場
+        await venuesApi.createCourt(payload);
+        alert('已成功新增球場！');
+        // 同步更新場館列表中的數量
+        setVenues(prev => prev.map(v => v.id === selectedVenueForCourts.id ? { ...v, court_count: (v.court_count || 0) + 1 } : v));
+        setAllVenuesForFiltering(prev => prev.map(v => v.id === selectedVenueForCourts.id ? { ...v, court_count: (v.court_count || 0) + 1 } : v));
+      }
+      setEditingCourt(null);
+      setNewCourt({ sports: [], base_price: 300, occupied: false });
+      await fetchVenueCourts(selectedVenueForCourts.id);
+    } catch (error) {
+      console.error('儲存球場失敗:', error);
+      alert('儲存球場失敗，請檢查輸入資料或伺服器連線。');
+    } finally {
+      setIsSavingCourt(false);
+    }
+  };
+
+  const handleStartEditCourt = (court) => {
+    setEditingCourt(court);
+    setNewCourt({
+      sports: court.sport_ids || [],
+      base_price: court.base_price || 0,
+      occupied: court.occupied || false
+    });
+  };
+
+  const handleDeleteCourt = async (courtId) => {
+    if (!window.confirm('確定要刪除此球場嗎？刪除後相關的球局可能受到影響！')) return;
+    try {
+      await venuesApi.deleteCourt(courtId);
+      alert('球場已成功刪除！');
+      // 同步更新場館列表中的數量
+      setVenues(prev => prev.map(v => v.id === selectedVenueForCourts.id ? { ...v, court_count: Math.max(0, (v.court_count || 1) - 1) } : v));
+      setAllVenuesForFiltering(prev => prev.map(v => v.id === selectedVenueForCourts.id ? { ...v, court_count: Math.max(0, (v.court_count || 1) - 1) } : v));
+      await fetchVenueCourts(selectedVenueForCourts.id);
+    } catch (error) {
+      console.error('刪除球場失敗:', error);
+      alert(error.response?.data?.detail || '刪除球場失敗，請稍後再試。');
     }
   };
 
   const handleAddAnnouncement = async (e) => {
     e.preventDefault();
     if (!newAnnouncement.title) return;
+
+    if (announcementTarget !== 'all' && !selectedBroadcastGameId) {
+      alert('請選擇目標球局！');
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      const created = await adminApi.createSystemAnnouncement(newAnnouncement);
-      const announcement = {
-        id: created.id || Date.now(),
-        title: created.title,
-        content: created.content,
-        date: created.created_at ? created.created_at.split('T')[0] : new Date().toISOString().split('T')[0]
+      // 1. 先把選取的本機檔案上傳到後端
+      const uploadedUrls = [];
+      for (const item of selectedFiles) {
+        const res = await adminApi.uploadImage(item.file);
+        if (res && res.url) {
+          uploadedUrls.push(res.url);
+        }
+      }
+
+      // 2. 決定標題字串
+      let finalTitle = newAnnouncement.title;
+      if (announcementTarget === 'organizer') {
+        finalTitle = `【通知 - 房主】${newAnnouncement.title}`;
+      } else if (announcementTarget === 'room_members') {
+        finalTitle = `【通知 - 房間所有人】${newAnnouncement.title}`;
+      } else {
+        finalTitle = `【公告】${newAnnouncement.title}`;
+      }
+
+      // 3. 序列化圖片網址到 content 欄位中
+      let finalContent = newAnnouncement.content;
+      if (uploadedUrls.length > 0) {
+        finalContent += `\n\n[Photos]\n${uploadedUrls.join(',')}`;
+      }
+
+      // 4. 建立公告
+      const payload = {
+        title: finalTitle,
+        content: finalContent
       };
+      const response = await adminApi.createSystemAnnouncement(payload);
+      const announcementId = response.id || Date.now();
+      
+      const announcement = {
+        id: announcementId,
+        title: finalTitle,
+        content: newAnnouncement.content, // 本地列表顯示乾淨的內容
+        photo: uploadedUrls,
+        date: response.created_at ? new Date(response.created_at).toLocaleDateString() : new Date().toLocaleDateString()
+      };
+
+      // 5. 呼叫發送推播 API (sendBroadcast)
+      // 訊息格式包含 【系統公告】 前置詞與 (Ref: #id) 尾碼，以便使用者端點擊時可展開完整視窗
+      const broadcastContent = `【系統公告】${finalTitle}：${newAnnouncement.content} (Ref: #${announcementId})`;
+      await adminApi.sendBroadcast({
+        target_group: announcementTarget,
+        content: broadcastContent,
+        game_id: announcementTarget !== 'all' ? selectedBroadcastGameId : null
+      });
+
       setAnnouncements([announcement, ...announcements]);
-      setNewAnnouncement({ title: '', content: '' });
-      alert('公告已發佈！');
+      setNewAnnouncement({ title: '', content: '', photo: [] });
+      setAnnouncementTarget('all');
+      setSelectedBroadcastGameId('');
+      setSelectedFiles([]);
+      alert('公告已發佈，並已發送群發推播！');
     } catch (error) {
-      console.error('Create announcement error:', error);
+      console.error('Create announcement and broadcast error:', error);
       alert('發佈失敗，請稍後再試。');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -382,15 +896,224 @@ function Admin() {
       try {
         await adminApi.deleteSystemAnnouncement(id);
         setAnnouncements(announcements.filter(a => a.id !== id));
-        alert('公告已成功刪除。');
+        alert('公告已成功刪除！');
       } catch (error) {
         console.error('Delete announcement error:', error);
-        alert('刪除公告失敗');
+        alert('刪除公告失敗，請稍後再試。');
       }
     }
   };
 
-  return (
+  const handleAddFeedbackType = async () => {
+    if (!newTypeName.trim()) return;
+    try {
+      await adminApi.createFeedbackType(newTypeName);
+      const ftData = await adminApi.getFeedbackTypes();
+      setFeedbackTypes(Array.isArray(ftData) ? ftData : (ftData.results || []));
+      setNewTypeName('');
+      alert('已新增回饋類型！');
+    } catch (err) {
+      console.error('Add feedback type error:', err);
+      alert('新增失敗');
+    }
+  };
+
+  const handleDeleteFeedbackType = async (id) => {
+    if (!window.confirm('確定要刪除此回饋類型嗎？')) return;
+    try {
+      await adminApi.deleteFeedbackType(id);
+      setFeedbackTypes(feedbackTypes.filter(t => t.id !== id));
+      alert('已刪除回饋類型');
+    } catch (err) {
+      console.error('Delete feedback type error:', err);
+      alert('刪除失敗');
+    }
+  };
+
+  const handleAddCourt = async (venueId) => {
+    if (!newCourtName.trim()) return;
+    try {
+      await adminApi.createCourt({ venue: venueId, name: newCourtName });
+      const params = {};
+      if (filterCity) params.city = filterCity;
+      if (filterDistrict) params.district = filterDistrict;
+      if (filterSport) params.sport_id = filterSport;
+      const venuesData = await venuesApi.getVenues(params);
+      const rawVenues = Array.isArray(venuesData) ? venuesData : (venuesData.results || []);
+      setVenues(rawVenues.map(v => ({
+        id: v.id,
+        name: v.name,
+        city: v.address_detail?.city || '',
+        district: v.address_detail?.district || '',
+        address: v.address_detail?.street_line || '',
+        facilities: v.facilities || [],
+        opening_hours: v.opening_hours || null,
+        court_count: v.court_count || 0,
+        sports: v.sports || [],
+        courts: v.courts || []
+      })));
+      setNewCourtName('');
+      alert('已成功新增球場！');
+    } catch (error) {
+      console.error('Add court error:', error);
+      alert('新增球場失敗');
+    }
+  };
+
+
+
+  const handleCompleteFeedback = async (id) => {
+    if (!replyText.trim()) {
+      alert('請輸入給使用者的回覆內容！');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await adminApi.handleFeedback(id, { is_handled: true, admin_reply: replyText });
+      setFeedbacks(feedbacks.map(fb => fb.id === id ? { ...fb, is_handled: true, admin_reply: replyText } : fb));
+      setReplyingFeedbackId(null);
+      setReplyText('');
+      alert('回饋標記完成並已通知使用者！');
+    } catch (error) {
+      console.error('Handle feedback error:', error);
+      alert('處理失敗，請稍後再試。');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteFeedback = async (id) => {
+    if (window.confirm('確定要刪除此回饋建議嗎？')) {
+      setIsSubmitting(true);
+      try {
+        await adminApi.deleteFeedback(id);
+        setFeedbacks(feedbacks.filter(fb => fb.id !== id));
+        alert('回饋已刪除。');
+      } catch (error) {
+        console.error('Delete feedback error:', error);
+        alert('刪除失敗，請稍後再試。');
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+  };
+
+  const handleUpdateGameTime = async (id) => {
+    if (!editGameDate || !editGameTimeSlot.trim()) {
+      alert('請填寫日期與時段！');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await adminApi.updateDemoGameStatus(id, { 
+        booking_date: editGameDate, 
+        time_slot: editGameTimeSlot 
+      });
+      setParties(parties.map(p => p.id === id ? { ...p, time: `${editGameDate} ${editGameTimeSlot}` } : p));
+      setEditingGameTimeId(null);
+      alert('球局時間已成功修改！');
+    } catch (error) {
+      console.error('Update game time error:', error);
+      alert('修改時間失敗，請確認伺服器狀態。');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSetTimeBefore30Min = async (id) => {
+    setIsSubmitting(true);
+    try {
+      const targetTime = new Date(Date.now() + 30 * 60 * 1000);
+      const year = targetTime.getFullYear();
+      const month = String(targetTime.getMonth() + 1).padStart(2, '0');
+      const day = String(targetTime.getDate()).padStart(2, '0');
+      const bookingDate = `${year}-${month}-${day}`;
+
+      const startHours = String(targetTime.getHours()).padStart(2, '0');
+      const startMinutes = String(targetTime.getMinutes()).padStart(2, '0');
+
+      const endTargetTime = new Date(targetTime.getTime() + 2 * 60 * 60 * 1000);
+      const endHours = String(endTargetTime.getHours()).padStart(2, '0');
+      const endMinutes = String(endTargetTime.getMinutes()).padStart(2, '0');
+
+      const timeSlot = `${startHours}:${startMinutes}-${endHours}:${endMinutes}`;
+
+      await adminApi.updateDemoGameStatus(id, { 
+        booking_date: bookingDate, 
+        time_slot: timeSlot 
+      });
+      setParties(parties.map(p => p.id === id ? { ...p, time: `${bookingDate} ${timeSlot}` } : p));
+      alert(`已成功設定球局時間為開局前 30 分鐘 (${bookingDate} ${timeSlot})！`);
+    } catch (error) {
+      console.error('Set time before 30min error:', error);
+      alert('設定開局前 30 分鐘失敗，請確認伺服器狀態。');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEditAnnouncementSubmit = async (e) => {
+    e.preventDefault();
+    if (!editingAnnouncement.title) return;
+    setIsSubmitting(true);
+    try {
+      const finalUrls = [];
+      
+      // 保留原有圖片網址，並上傳新選取的本機檔案
+      for (const item of editFiles) {
+        if (item.type === 'existing') {
+          finalUrls.push(item.url);
+        } else if (item.type === 'new') {
+          const res = await adminApi.uploadImage(item.file);
+          if (res && res.url) {
+            finalUrls.push(res.url);
+          }
+        }
+      }
+
+      // 序列化圖片網址到 content 欄位中
+      let finalContent = editingAnnouncement.content;
+      if (finalUrls.length > 0) {
+        finalContent += `\n\n[Photos]\n${finalUrls.join(',')}`;
+      }
+
+      const payload = {
+        title: editingAnnouncement.title,
+        content: finalContent
+      };
+      await adminApi.updateSystemAnnouncement(editingAnnouncement.id, payload);
+      
+      setAnnouncements(announcements.map(a => 
+        a.id === editingAnnouncement.id 
+          ? { 
+              ...a, 
+              title: editingAnnouncement.title, 
+              content: editingAnnouncement.content, 
+              photo: finalUrls 
+            } 
+          : a
+      ));
+      setEditingAnnouncement(null);
+      setEditFiles([]);
+      alert('公告修改成功！');
+    } catch (error) {
+      console.error('Update announcement error:', error);
+      alert('修改失敗，請稍後再試。');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 從現有場館中萃取所有設施，若為空則提供預設值
+  const uniqueFacilities = [...new Set(
+    allVenuesForFiltering.flatMap(v => v.facilities || []).filter(Boolean)
+  )];
+  const defaultFacilities = uniqueFacilities.length > 0 
+    ? uniqueFacilities 
+    : ["免費車位", "熱水淋浴間", "自動販賣機", "冷氣機", "廁所"];
+
+  if (!isMobile) {
+    return (
     <div className="admin-container" style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
       {/* 側邊欄 */}
       <aside style={{ width: '260px', backgroundColor: '#1e293b', color: 'white', padding: '24px', display: 'flex', flexDirection: 'column' }}>
@@ -418,30 +1141,34 @@ function Admin() {
           >
             <Bell size={20} /> 系統公告
           </button>
-          <button
+          <button 
             className={`admin-nav-btn ${activeTab === 'feedbacks' ? 'active' : ''}`}
             onClick={() => setActiveTab('feedbacks')}
           >
             <MessageSquareText size={20} /> 使用者回饋
           </button>
-          <button
+          <button 
+            className={`admin-nav-btn ${activeTab === 'user_management' ? 'active' : ''}`}
+            onClick={() => setActiveTab('user_management')}
+          >
+            <Users size={20} /> 會員管理
+          </button>
+          <button 
+            className={`admin-nav-btn ${activeTab === 'demo_games' ? 'active' : ''}`}
+            onClick={() => setActiveTab('demo_games')}
+          >
+            <Wrench size={20} /> 房間狀態調整
+          </button>
+          <button 
             className={`admin-nav-btn ${activeTab === 'feedback-types' ? 'active' : ''}`}
             onClick={() => setActiveTab('feedback-types')}
           >
             <Settings size={20} /> 回饋類型管理
           </button>
-          <div style={{ margin: '20px 0', borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
-          <button 
-            className={`admin-nav-btn ${activeTab === 'demo' ? 'active' : ''}`}
-            onClick={() => setActiveTab('demo')}
-            style={{ color: '#fcd34d' }}
-          >
-            <Wrench size={20} /> Demo 工具箱
-          </button>
         </nav>
 
         <button 
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/home')}
           style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '12px' }}
         >
           <ArrowLeft size={18} /> 退出管理員
@@ -483,28 +1210,16 @@ function Admin() {
             <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '24px' }}>
               <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
                 <h3 style={{ marginBottom: '20px' }}>近期活動熱度</h3>
-                {(() => {
-                  const DAY_ZH = ['週一','週二','週三','週四','週五','週六','週日'];
-                  const items = analytics.daily_activity && analytics.daily_activity.length > 0
-                    ? analytics.daily_activity
-                    : Array(7).fill({ height: 0, weekday: null });
-                  return (
-                    <>
-                      <div style={{ height: '200px', display: 'flex', alignItems: 'flex-end', gap: '12px', paddingBottom: '20px' }}>
-                        {items.map((item, i) => (
-                          <div key={i} style={{ flex: 1, backgroundColor: '#f1f5f9', borderRadius: '4px', height: '100%', position: 'relative' }}>
-                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#7995a5', height: `${item.height ?? 0}%`, borderRadius: '4px' }}></div>
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', fontSize: '12px' }}>
-                        {items.map((item, i) => (
-                          <span key={i}>{item.weekday != null ? DAY_ZH[item.weekday] : DAY_ZH[i]}</span>
-                        ))}
-                      </div>
-                    </>
-                  );
-                })()}
+                <div style={{ height: '200px', display: 'flex', alignItems: 'flex-end', gap: '12px', paddingBottom: '20px' }}>
+                  {(analytics.daily_activity && analytics.daily_activity.length > 0 ? analytics.daily_activity : [0,0,0,0,0,0,0]).map((h, i) => (
+                    <div key={i} style={{ flex: 1, backgroundColor: '#f1f5f9', borderRadius: '4px', height: '100%', position: 'relative' }}>
+                      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#7995a5', height: `${h}%`, borderRadius: '4px' }}></div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', fontSize: '12px' }}>
+                  <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                </div>
               </div>
 
               <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
@@ -532,177 +1247,309 @@ function Admin() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
               <h2 style={{ margin: 0 }}>場地管理</h2>
               <button className="btn-primary" onClick={() => document.getElementById('add-venue-form').scrollIntoView({ behavior: 'smooth' })}>
-                <Plus size={18} /> 新增場館
+                <Plus size={18} /> 新增場地
               </button>
             </div>
 
-            {/* 場館列表 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {venues.map(v => (
-                <div key={v.id} style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-                  {/* 場館標題列 */}
-                  <div style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', borderBottom: expandedVenue === v.id ? '1px solid #e2e8f0' : 'none', gap: '12px' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: '700', fontSize: '16px' }}>{v.name}</div>
-                      <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>{v.city} {v.district}</div>
-                    </div>
-                    {/* 場館設施 */}
-                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', maxWidth: '300px' }}>
-                      {(Array.isArray(v.facilities) ? v.facilities : []).map((f, i) => (
-                        <span key={i} style={{ fontSize: '11px', backgroundColor: '#e0f2fe', color: '#0284c7', padding: '2px 7px', borderRadius: '4px' }}>{f}</span>
-                      ))}
-                    </div>
-                    <button
-                      onClick={() => setExpandedVenue(expandedVenue === v.id ? null : v.id)}
-                      style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', fontSize: '13px', color: '#475569' }}
-                    >
-                      {expandedVenue === v.id ? '收合球場' : '展開球場 ▼'}
-                    </button>
-                    <button onClick={() => handleDeleteVenue(v.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
+            {/* 縣市/區域 篩選查詢 */}
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', backgroundColor: 'white', padding: '16px 24px', borderRadius: '12px', border: '1px solid #e2e8f0', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: '#64748b' }}>篩選縣市：</span>
+                <select 
+                  className="form-input" 
+                  style={{ width: '150px', margin: 0 }}
+                  value={filterCity} 
+                  onChange={(e) => {
+                    setFilterCity(e.target.value);
+                    setFilterDistrict(''); // 切換縣市時重置區域
+                  }}
+                >
+                  <option value="">全部縣市</option>
+                  {cityOptions.map(city => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+              </div>
 
-                  {/* 球場列表（展開時顯示） */}
-                  {expandedVenue === v.id && (
-                    <div style={{ padding: '16px 20px', backgroundColor: '#f8fafc' }}>
-                      <div style={{ fontWeight: '600', fontSize: '14px', marginBottom: '12px', color: '#475569' }}>球場列表</div>
-                      {(v.courts || []).length === 0 ? (
-                        <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '12px' }}>尚無球場，請在下方新增。</div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-                          {(v.courts || []).map(c => (
-                            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: 'white', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                              <span style={{ fontWeight: '600', fontSize: '13px' }}>球場 #{c.id}</span>
-                              <div style={{ display: 'flex', gap: '4px', flex: 1, flexWrap: 'wrap' }}>
-                                {(Array.isArray(c.sports) ? c.sports : []).map((s, i) => (
-                                  <span key={i} style={{ fontSize: '11px', backgroundColor: '#dcfce7', color: '#16a34a', padding: '2px 7px', borderRadius: '4px' }}>{typeof s === 'string' ? s : s.name}</span>
-                                ))}
-                              </div>
-                              <span style={{ fontSize: '12px', color: '#64748b' }}>NT${c.base_price}/hr</span>
-                              <button onClick={() => handleDeleteCourt(v.id, c.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: '#64748b' }}>篩選區域：</span>
+                <select 
+                  className="form-input" 
+                  style={{ width: '180px', margin: 0 }}
+                  value={filterDistrict} 
+                  onChange={(e) => setFilterDistrict(e.target.value)}
+                  disabled={!filterCity}
+                >
+                  <option value="">{filterCity ? "全部區域" : "請先選擇縣市"}</option>
+                  {districtOptions.map(dist => (
+                    <option key={dist} value={dist}>{dist}</option>
+                  ))}
+                </select>
+              </div>
 
-                      {/* 新增球場表單 */}
-                      <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '10px', border: '1px dashed #cbd5e1' }}>
-                        <div style={{ fontWeight: '600', fontSize: '13px', marginBottom: '12px', color: '#475569' }}>
-                          <Plus size={14} style={{ display: 'inline', marginRight: '4px' }} /> 新增球場
-                        </div>
-                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                          <div>
-                            <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>選擇運動類型（可複選）</div>
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                              {SPORT_LIST.map(sp => {
-                                const sportObj = allSports.find(s => s.name === sp || (s.chinese_name || '') === sp);
-                                const sid = sportObj?.id;
-                                const isSelected = newCourtForm.venueId === v.id && newCourtForm.sportIds.includes(sid);
-                                return (
-                                  <button
-                                    key={sp}
-                                    type="button"
-                                    onClick={() => {
-                                      const base = newCourtForm.venueId === v.id ? newCourtForm : { venueId: v.id, sportIds: [], basePrice: 300 };
-                                      if (!sid) return;
-                                      const newIds = isSelected
-                                        ? base.sportIds.filter(x => x !== sid)
-                                        : [...base.sportIds, sid];
-                                      setNewCourtForm({ ...base, venueId: v.id, sportIds: newIds });
-                                    }}
-                                    style={{
-                                      padding: '6px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: '600', cursor: 'pointer',
-                                      border: `1px solid ${isSelected ? '#10b981' : '#e2e8f0'}`,
-                                      backgroundColor: isSelected ? '#dcfce7' : 'white',
-                                      color: isSelected ? '#16a34a' : '#475569'
-                                    }}
-                                  >
-                                    {sp}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>每小時費用 (NT$)</div>
-                            <input
-                              type="number" min="0" className="form-input"
-                              style={{ width: '120px' }}
-                              value={newCourtForm.venueId === v.id ? newCourtForm.basePrice : 300}
-                              onChange={e => setNewCourtForm({ ...newCourtForm, venueId: v.id, basePrice: parseInt(e.target.value) || 0 })}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            className="btn-primary"
-                            style={{ height: '38px' }}
-                            onClick={() => handleAddCourt(v.id)}
-                          >
-                            新增球場
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: '#64748b' }}>篩選運動：</span>
+                <select 
+                  className="form-input" 
+                  style={{ width: '150px', margin: 0 }}
+                  value={filterSport} 
+                  onChange={(e) => setFilterSport(e.target.value)}
+                >
+                  <option value="">全部運動</option>
+                  {sportsList.map(sport => (
+                    <option key={sport.id} value={sport.id}>{sport.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <button 
+                className="btn-outline" 
+                style={{ marginLeft: 'auto', padding: '8px 16px' }}
+                onClick={() => {
+                  setFilterCity('');
+                  setFilterDistrict('');
+                  setFilterSport('');
+                }}
+              >
+                重置篩選
+              </button>
             </div>
 
-            {/* 新增場館表單 */}
-            <div id="add-venue-form" style={{ marginTop: '40px', backgroundColor: 'white', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-              <h3 style={{ marginBottom: '24px' }}>新增場館</h3>
-              <form onSubmit={handleAddVenue}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                  <div className="form-group">
-                    <label className="form-label">場館名稱</label>
-                    <input required type="text" className="form-input" placeholder="例如：板橋第二運動場" value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">縣市</label>
-                    <select className="form-input" value={newVenue.city} onChange={e => {
-                      const firstDistrict = CITY_DISTRICTS[e.target.value]?.[0] || '';
-                      setNewVenue({...newVenue, city: e.target.value, district: firstDistrict});
-                    }}>
-                      {Object.keys(CITY_DISTRICTS).map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">區域</label>
-                    <select required className="form-input" value={newVenue.district} onChange={e => setNewVenue({...newVenue, district: e.target.value})}>
-                      {(CITY_DISTRICTS[newVenue.city] || []).map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-                </div>
+            <div style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead style={{ backgroundColor: '#f1f5f9' }}>
+                  <tr>
+                    <th style={{ padding: '16px' }}>場地名稱</th>
+                    <th style={{ padding: '16px' }}>詳細地址</th>
+                    <th style={{ padding: '16px' }}>數量</th>
+                    <th style={{ padding: '16px' }}>設施</th>
+                    <th style={{ padding: '16px' }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {venues.map(v => (
+                    <tr key={v.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: '16px', fontWeight: '700' }}>{v.name}</td>
+                      <td style={{ padding: '16px' }}>
+                        <div>{v.address}</div>
+                        {v.opening_hours && (
+                          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                            🕒 平日: {v.opening_hours.weekdays || '無'} | 假日: {v.opening_hours.weekends || '無'}
+                            {v.opening_hours.closed_days && v.opening_hours.closed_days.length > 0 && (
+                              <span style={{ color: '#ef4444', marginLeft: '6px', fontWeight: 'bold' }}>
+                                ({v.opening_hours.closed_days.join('、')}公休)
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '16px', fontWeight: '600' }}>
+                        {v.court_count ? `${v.court_count} 個球場` : '0 個球場'}
+                      </td>
+                      <td style={{ padding: '16px' }}>
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          {v.facilities.map((f, i) => (
+                            <span key={i} style={{ fontSize: '11px', backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>{f}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ padding: '16px' }}>
+                        <button onClick={() => handleOpenCourtManager(v)} style={{ color: '#0ea5e9', background: 'none', border: 'none', cursor: 'pointer', marginRight: '12px' }} title="管理球場">
+                          <Wrench size={18} />
+                        </button>
+                        <button onClick={() => handleStartEdit(v)} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', marginRight: '12px' }} title="編輯場地">
+                          <Pencil size={18} />
+                        </button>
+                        <button onClick={() => handleDeleteVenue(v.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }} title="刪除場地">
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {venues.length === 0 && (
+                    <tr>
+                      <td colSpan="5" style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>
+                        {hasActiveFilter ? "目前無符合條件的場地。" : "請選擇縣市、區域或球類篩選條件以查詢場地。"}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-                {/* 設施勾選（綁在場館上） */}
-                <div className="form-group" style={{ marginTop: '16px' }}>
-                  <label className="form-label">場館設施（可複選）</label>
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' }}>
-                    {['冷氣', '飲水機', '廁所', '淋浴間', '停車場', '置物櫃', '投幣式飲料機', '急救箱'].map(f => {
-                      const checked = newVenue.facilities.includes(f);
+            <div id="add-venue-form" style={{ marginTop: '40px', backgroundColor: 'white', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+              <h3 style={{ marginBottom: '24px' }}>{editingVenueId ? "編輯場地資料" : "新增場地資料"}</h3>
+              <form onSubmit={handleAddVenue} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <div className="form-group">
+                  <label className="form-label">場地名稱</label>
+                  <input required type="text" className="form-input" placeholder="例如：板橋第二運動場" value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">縣市</label>
+                  <select 
+                    className="form-input" 
+                    value={newVenue.city} 
+                    onChange={e => {
+                      const selectedCity = e.target.value;
+                      const dists = citiesToUse[selectedCity] || [];
+                      setNewVenue({
+                        ...newVenue, 
+                        city: selectedCity, 
+                        district: dists[0] || ''
+                      });
+                    }}
+                  >
+                    {Object.keys(citiesToUse).map(city => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">區域</label>
+                  <select 
+                    className="form-input" 
+                    value={newVenue.district} 
+                    onChange={e => setNewVenue({...newVenue, district: e.target.value})}
+                  >
+                    {(citiesToUse[newVenue.city] || []).map(dist => (
+                      <option key={dist} value={dist}>{dist}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">詳細地址</label>
+                  <input required type="text" className="form-input" placeholder="例如：雙十路二段100號" value={newVenue.street_line} onChange={e => setNewVenue({...newVenue, street_line: e.target.value})} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">營業時間 (平日)</label>
+                  <input required type="text" className="form-input" placeholder="例如：08:00-22:00" value={newVenue.weekdays_hours || ''} onChange={e => setNewVenue({...newVenue, weekdays_hours: e.target.value})} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">營業時間 (假日)</label>
+                  <input required type="text" className="form-input" placeholder="例如：08:00-22:00" value={newVenue.weekends_hours || ''} onChange={e => setNewVenue({...newVenue, weekends_hours: e.target.value})} />
+                </div>
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label className="form-label" style={{ fontWeight: '700' }}>公休日 (可複選)</label>
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '8px' }}>
+                    {['週一', '週二', '週三', '週四', '週五', '週六', '週日'].map(day => {
+                      const isClosed = newVenue.closed_days?.includes(day);
                       return (
-                        <label key={f} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', border: `1px solid ${checked ? '#7995a5' : '#e2e8f0'}`, backgroundColor: checked ? '#f0f4f8' : 'white', fontSize: '13px' }}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => {
-                              const list = checked ? newVenue.facilities.filter(x => x !== f) : [...newVenue.facilities, f];
-                              setNewVenue({...newVenue, facilities: list});
-                            }}
-                            style={{ accentColor: '#7995a5' }}
+                        <label key={day} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '14px', cursor: 'pointer' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={isClosed} 
+                            onChange={e => {
+                              const checked = e.target.checked;
+                              const currentClosed = newVenue.closed_days || [];
+                              if (checked) {
+                                setNewVenue({ ...newVenue, closed_days: [...currentClosed, day] });
+                              } else {
+                                setNewVenue({ ...newVenue, closed_days: currentClosed.filter(d => d !== day) });
+                              }
+                            }} 
                           />
-                          {f}
+                          {day}
                         </label>
                       );
                     })}
                   </div>
                 </div>
-
-                <div style={{ marginTop: '24px' }}>
-                  <button type="submit" className="login-button" style={{ width: '200px' }}>確認新增場館</button>
+                {!editingVenueId && (
+                  <div className="form-group" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <label className="form-label" style={{ fontWeight: '700', marginBottom: 0 }}>主要運動球類與數量 (可新增 1 至 4 種)</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {courtCounts.map((item, idx) => (
+                        <div key={idx} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                          <select 
+                            required
+                            className="form-input" 
+                            style={{ flex: 2, margin: 0 }}
+                            value={item.sport_id} 
+                            onChange={e => {
+                              const updated = [...courtCounts];
+                              updated[idx].sport_id = e.target.value;
+                              setCourtCounts(updated);
+                            }}
+                          >
+                            <option value="">選擇運動種類</option>
+                            {sportsList.map(sport => (
+                              <option key={sport.id} value={sport.id}>{sport.name}</option>
+                            ))}
+                          </select>
+                          <input 
+                            required
+                            type="number" 
+                            min="1" 
+                            className="form-input" 
+                            style={{ flex: 1, margin: 0 }}
+                            placeholder="數量" 
+                            value={item.count} 
+                            onChange={e => {
+                              const updated = [...courtCounts];
+                              updated[idx].count = parseInt(e.target.value, 10) || 1;
+                              setCourtCounts(updated);
+                            }} 
+                          />
+                          {courtCounts.length > 1 && (
+                            <button 
+                              type="button" 
+                              className="btn-outline" 
+                              style={{ padding: '8px 12px', color: '#ef4444', borderColor: '#fee2e2', backgroundColor: '#fef2f2', margin: 0 }}
+                              onClick={() => {
+                                setCourtCounts(courtCounts.filter((_, i) => i !== idx));
+                              }}
+                            >
+                              移除
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {courtCounts.length < 4 && (
+                      <button 
+                        type="button" 
+                        className="btn-outline" 
+                        style={{ alignSelf: 'flex-start', padding: '6px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        onClick={() => {
+                          setCourtCounts([...courtCounts, { sport_id: '', count: 1 }]);
+                        }}
+                      >
+                        <Plus size={14} /> 新增運動項目
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label className="form-label" style={{ marginBottom: '8px', display: 'block' }}>設施 (複選)</label>
+                  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', padding: '12px 16px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#f8fafc' }}>
+                    {defaultFacilities.map((fac) => (
+                      <label key={fac} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer', fontWeight: '500', color: '#334155', userSelect: 'none' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={newVenue.facilities.includes(fac)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setNewVenue({ ...newVenue, facilities: [...newVenue.facilities, fac] });
+                            } else {
+                              setNewVenue({ ...newVenue, facilities: newVenue.facilities.filter(f => f !== fac) });
+                            }
+                          }}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#3b82f6' }}
+                        />
+                        {fac}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ gridColumn: 'span 2', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <button type="submit" className="login-button" style={{ width: '200px' }}>
+                    {editingVenueId ? "儲存修改場地" : "確認新增場地"}
+                  </button>
+                  {editingVenueId && (
+                    <button type="button" className="btn-outline" onClick={handleCancelEdit} style={{ margin: 0 }}>
+                      取消編輯
+                    </button>
+                  )}
                 </div>
               </form>
             </div>
@@ -722,12 +1569,115 @@ function Admin() {
                 <h3 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}><MessageSquarePlus size={20} /> 發佈新公告</h3>
                 <form onSubmit={handleAddAnnouncement}>
                   <div className="form-group">
+                    <label className="form-label">發佈對象 (發送系統推播)</label>
+                    <div style={{ display: 'flex', gap: '16px', marginTop: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: '#475569' }}>
+                        <input
+                          type="radio"
+                          name="announcementTarget"
+                          value="all"
+                          checked={announcementTarget === 'all'}
+                          onChange={() => setAnnouncementTarget('all')}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        全部會員
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: '#475569' }}>
+                        <input
+                          type="radio"
+                          name="announcementTarget"
+                          value="organizer"
+                          checked={announcementTarget === 'organizer'}
+                          onChange={() => setAnnouncementTarget('organizer')}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        特定球局房主
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: '#475569' }}>
+                        <input
+                          type="radio"
+                          name="announcementTarget"
+                          value="room_members"
+                          checked={announcementTarget === 'room_members'}
+                          onChange={() => setAnnouncementTarget('room_members')}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        房間所有成員
+                      </label>
+                    </div>
+                  </div>
+
+                  {(announcementTarget === 'organizer' || announcementTarget === 'room_members') && (
+                    <div className="form-group" style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
+                      <label className="form-label" style={{ color: '#0284c7' }}>選擇目標球局</label>
+                      <select
+                        required
+                        className="form-input"
+                        value={selectedBroadcastGameId}
+                        onChange={(e) => setSelectedBroadcastGameId(e.target.value)}
+                        style={{ borderColor: '#0284c7' }}
+                      >
+                        <option value="">-- 請選擇球局 --</option>
+                        {parties.map((party) => (
+                          <option key={party.id} value={party.id}>
+                            【ID: {party.id}】{party.sportName} - {party.title} ({party.time})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="form-group">
                     <label className="form-label">公告標題</label>
                     <input required type="text" className="form-input" placeholder="輸入標題" value={newAnnouncement.title} onChange={e => setNewAnnouncement({...newAnnouncement, title: e.target.value})} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">內容</label>
                     <textarea required className="form-input" rows="4" placeholder="輸入公告詳細內容..." value={newAnnouncement.content} onChange={e => setNewAnnouncement({...newAnnouncement, content: e.target.value})} style={{ resize: 'none' }}></textarea>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">公告圖片 (最多 3 張，可從裝置上傳)</label>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
+                      {/* 本機已選取圖片預覽 */}
+                      {selectedFiles.map((fileItem) => (
+                        <div key={fileItem.id} style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                          <img src={fileItem.previewUrl} alt="upload-preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedFiles(selectedFiles.filter(item => item.id !== fileItem.id));
+                            }}
+                            style={{ position: 'absolute', top: '2px', right: '2px', backgroundColor: 'rgba(239, 68, 68, 0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', fontSize: '12px', padding: 0 }}
+                          >
+                            &times;
+                          </button>
+                        </div>
+                      ))}
+                      
+                      {/* 上傳按鈕 */}
+                      {selectedFiles.length < 3 && (
+                        <label style={{ width: '80px', height: '80px', border: '2px dashed #cbd5e1', borderRadius: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: '#64748b' }}>
+                          <Plus size={20} />
+                          <span style={{ fontSize: '11px', marginTop: '4px' }}>選擇檔案</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              if (selectedFiles.length >= 3) {
+                                alert('最多只能選擇 3 張圖片。');
+                                return;
+                              }
+                              const previewUrl = URL.createObjectURL(file);
+                              setSelectedFiles(prev => [...prev, { id: Date.now().toString(), file, previewUrl }]);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
                   </div>
                   <button type="submit" className="login-button">發佈公告</button>
                 </form>
@@ -742,13 +1692,39 @@ function Admin() {
                       <span style={{ fontWeight: '700', fontSize: '16px' }}>{a.title}</span>
                       <span style={{ color: '#94a3b8', fontSize: '13px' }}>{a.date}</span>
                     </div>
-                    <p style={{ margin: 0, fontSize: '14px', color: '#64748b', lineHeight: '1.5', paddingRight: '40px' }}>{a.content}</p>
-                    <button 
-                      onClick={() => handleDeleteAnnouncement(a.id)}
-                      style={{ position: 'absolute', right: '20px', top: '20px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    <p style={{ margin: 0, fontSize: '14px', color: '#64748b', lineHeight: '1.5', paddingRight: '60px' }}>{a.content}</p>
+                    
+                    {a.photo && a.photo.length > 0 && (
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+                        {a.photo.map((p, idx) => (
+                          <SafeImage key={idx} src={p} alt={`Photo ${idx+1}`} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }} />
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ position: 'absolute', right: '20px', top: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <button 
+                        onClick={() => {
+                          setEditingAnnouncement(a);
+                          setEditFiles((a.photo || []).map((url, idx) => ({
+                            id: `existing-${idx}`,
+                            type: 'existing',
+                            url: url
+                          })));
+                        }}
+                        style={{ color: '#0284c7', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+                        title="編輯公告"
+                      >
+                        <Pencil size={18} />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteAnnouncement(a.id)}
+                        style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+                        title="刪除公告"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -759,10 +1735,46 @@ function Admin() {
         {/* 使用者回饋 Tab */}
         {activeTab === 'feedbacks' && (
           <div>
-            <h2 style={{ marginBottom: '32px' }}>使用者建議與回饋</h2>
+            <h2 style={{ marginBottom: '24px' }}>使用者建議與回饋</h2>
+            
+            {/* 待處理 vs 已處理 分頁選擇 */}
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
+              <button 
+                onClick={() => setFeedbackFilter('pending')}
+                style={{ 
+                  padding: '8px 16px', 
+                  borderRadius: '20px', 
+                  border: '1px solid #cbd5e1', 
+                  backgroundColor: feedbackFilter === 'pending' ? '#7995a5' : 'white', 
+                  color: feedbackFilter === 'pending' ? 'white' : '#475569',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                待處理 ({feedbacks.filter(f => !f.is_handled).length})
+              </button>
+              <button 
+                onClick={() => setFeedbackFilter('handled')}
+                style={{ 
+                  padding: '8px 16px', 
+                  borderRadius: '20px', 
+                  border: '1px solid #cbd5e1', 
+                  backgroundColor: feedbackFilter === 'handled' ? '#7995a5' : 'white', 
+                  color: feedbackFilter === 'handled' ? 'white' : '#475569',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                已完成 ({feedbacks.filter(f => f.is_handled).length})
+              </button>
+            </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {feedbacks.filter(f => !f.is_handled).map(f => (
+              {feedbacks.filter(f => feedbackFilter === 'pending' ? !f.is_handled : f.is_handled).map(f => (
                 <div key={f.id} style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -785,241 +1797,2354 @@ function Admin() {
                       {f.type}
                     </span>
                   </div>
+                  
                   <p style={{ margin: 0, fontSize: '15px', color: '#475569', lineHeight: '1.6', paddingLeft: '52px' }}>
                     {f.content}
                   </p>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', gap: '12px', alignItems: 'center' }}>
-                    <button style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '700' }} onClick={async () => {
-                      const replyText = window.prompt("請輸入給使用者的回覆內容 (留空將使用預設回覆)：");
-                      if (replyText === null) return; // 取消則不處理
-                      try {
-                        await adminApi.handleFeedback(f.id, { is_handled: true, admin_reply: replyText });
-                        setFeedbacks(feedbacks.map(fb => fb.id === f.id ? { ...fb, is_handled: true, admin_reply: replyText } : fb));
-                        alert('已標記完成並發送通知！');
-                      } catch (error) {
-                        alert('標記失敗');
-                      }
-                    }}>
-                      <CheckCircle size={18} /> 標記完成
+
+                  {/* 如果是已處理，顯示回覆內容 */}
+                  {f.is_handled && (
+                    <div style={{ marginTop: '16px', backgroundColor: '#f8fafc', padding: '16px', borderRadius: '12px', borderLeft: '4px solid #10b981', paddingLeft: '20px', marginLeft: '52px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#1e293b', marginBottom: '4px' }}>管理者的回覆：</div>
+                      <div style={{ fontSize: '14px', color: '#475569', whiteSpace: 'pre-wrap' }}>{f.admin_reply || '無回覆內容。'}</div>
+                    </div>
+                  )}
+
+                  {/* 填寫回覆區塊 (待處理時展開) */}
+                  {replyingFeedbackId === f.id && (
+                    <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '52px' }}>
+                      <textarea 
+                        placeholder="請輸入給使用者的回覆內容（送出後會自動發送通知給使用者）..."
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        style={{ width: '100%', minHeight: '80px', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', resize: 'none', fontFamily: 'inherit' }}
+                      />
+                      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                        <button 
+                          onClick={() => { setReplyingFeedbackId(null); setReplyText(''); }} 
+                          style={{ padding: '6px 14px', border: '1px solid #cbd5e1', background: 'white', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', color: '#475569' }}
+                        >
+                          取消
+                        </button>
+                        <button 
+                          onClick={() => handleCompleteFeedback(f.id)} 
+                          style={{ padding: '6px 14px', border: 'none', background: '#10b981', color: 'white', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                          確認送出並完成
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 控制按鈕區 */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', gap: '16px', alignItems: 'center' }}>
+                    {!f.is_handled && replyingFeedbackId !== f.id && (
+                      <button 
+                        style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '700' }} 
+                        onClick={() => { setReplyingFeedbackId(f.id); setReplyText(''); }}
+                      >
+                        <MessageSquareText size={18} /> 回覆
+                      </button>
+                    )}
+                    <button 
+                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '700' }} 
+                      onClick={() => handleDeleteFeedback(f.id)}
+                    >
+                      <Trash2 size={18} /> 刪除
                     </button>
                   </div>
                 </div>
               ))}
-              {feedbacks.filter(f => !f.is_handled).length === 0 && (
+              
+              {feedbacks.filter(f => feedbackFilter === 'pending' ? !f.is_handled : f.is_handled).length === 0 && (
                 <div style={{ textAlign: 'center', padding: '100px', color: '#94a3b8' }}>
-                  目前沒有待處理的回饋。
+                  {feedbackFilter === 'pending' ? '目前沒有待處理的回饋。' : '目前沒有已完成的回饋。'}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* 會員管理 Tab */}
+        {activeTab === 'user_management' && (
+          <div className="admin-content">
+            <h2 style={{ marginBottom: '8px', color: '#1e293b' }}>👥 會員帳號管理 (User Management)</h2>
+            <p style={{ color: '#64748b', marginBottom: '32px' }}>提供關鍵字搜尋會員，查看每位會員的詳細個人檔案、歷史創房/參團紀錄，並具備「暫停帳號 (Ban)」或「調整信譽積分」的權限。</p>
+
+            {/* 搜尋列 */}
+            <form onSubmit={handleUmSearchSubmit} style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                <input
+                  type="text"
+                  placeholder="搜尋 Email、手機、姓名..."
+                  value={umSearchQuery}
+                  onChange={(e) => setUmSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px 12px 42px',
+                    borderRadius: '12px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '14px',
+                    outline: 'none',
+                    transition: 'border-color 0.2s',
+                    backgroundColor: '#fff'
+                  }}
+                />
+              </div>
+              <button type="submit" className="btn-primary" style={{ padding: '0 24px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Search size={16} /> 搜尋
+              </button>
+              {umSearchQuery && (
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => {
+                    setUmSearchQuery('');
+                    handleFetchUmUsers('');
+                  }}
+                  style={{ padding: '0 16px', borderRadius: '12px' }}
+                >
+                  清除
+                </button>
+              )}
+            </form>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '32px', alignItems: 'start' }}>
+              
+              {/* 左側：會員清單 */}
+              <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                    <Users size={20} color="#7995a5" /> 會員清單 ({umUsers.length} 人)
+                  </h3>
+                </div>
+
+                {umIsLoadingUsers ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px' }}>
+                    <div className="upload-spinner" style={{ width: '32px', height: '32px', borderWidth: '3px' }}></div>
+                  </div>
+                ) : (
+                  <div className="demo-parties-list" style={{ maxHeight: '600px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', paddingRight: '4px' }}>
+                    {umUsers.map((u) => {
+                      const isBanned = u.is_active === false;
+                      const repStatus = getReputationStatus(u.credit_point ?? 90);
+                      const isSelected = umSelectedUser && umSelectedUser.id === u.id;
+
+                      return (
+                        <div
+                          key={u.id}
+                          onClick={() => handleSelectUmUser(u)}
+                          style={{
+                            padding: '16px',
+                            borderRadius: '12px',
+                            border: '1px solid',
+                            borderColor: isSelected ? '#7995a5' : '#e2e8f0',
+                            backgroundColor: isSelected ? '#f8fafc' : '#fff',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}
+                          className="user-list-item"
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', overflow: 'hidden' }}>
+                            <div style={{ position: 'relative' }}>
+                              {u.avatar_url ? (
+                                <SafeImage src={u.avatar_url} alt="avatar" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
+                              ) : (
+                                <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#e2e8f0', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#64748b' }}>
+                                  <UserCircle size={24} />
+                                </div>
+                              )}
+                              {isBanned && (
+                                <div style={{ position: 'absolute', bottom: '-2px', right: '-2px', backgroundColor: '#ef4444', color: 'white', borderRadius: '50%', width: '16px', height: '16px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px solid white' }}>
+                                  <ShieldBan size={10} />
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ overflow: 'hidden' }}>
+                              <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {u.name || u.email?.split('@')[0] || `會員 #${u.id}`}
+                                {isBanned && (
+                                  <span style={{ fontSize: '11px', fontWeight: '800', backgroundColor: '#fee2e2', color: '#ef4444', padding: '2px 6px', borderRadius: '4px' }}>已停權</span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {u.email}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: '13px', fontWeight: '800', color: repStatus.color }}>
+                                {u.credit_point ?? 90} 分
+                              </div>
+                              <div style={{ fontSize: '10px', color: '#94a3b8' }}>
+                                {repStatus.label.split(' ')[0]}
+                              </div>
+                            </div>
+                            <ChevronRight size={16} color="#cbd5e1" />
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {umUsers.length === 0 && (
+                      <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
+                        找不到符合條件的會員。
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 右側：會員詳細檔案與紀錄 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                {umSelectedUser ? (
+                  <div style={{ backgroundColor: 'white', padding: '28px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        {umSelectedUser.avatar_url ? (
+                          <SafeImage src={umSelectedUser.avatar_url} alt="avatar" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #e2e8f0' }} />
+                        ) : (
+                          <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#94a3b8', border: '2px solid #e2e8f0' }}>
+                            <UserCircle size={36} />
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ fontSize: '20px', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {umSelectedUser.name || '未填寫姓名'}
+                            {umSelectedUser.is_active === false && (
+                              <span style={{ fontSize: '12px', fontWeight: '800', backgroundColor: '#fee2e2', color: '#ef4444', padding: '2px 8px', borderRadius: '4px' }}>帳號暫停中</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>會員 ID: #{umSelectedUser.id}</div>
+                        </div>
+                      </div>
+
+                      {/* 停權與解除停權按鈕 */}
+                      <div>
+                        {umSelectedUser.is_active === false ? (
+                          <button
+                            onClick={() => handleUnbanUser(umSelectedUser.id)}
+                            className="btn-outline"
+                            style={{ borderColor: '#10b981', color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', fontSize: '13px' }}
+                          >
+                            <CheckCircle size={16} /> 恢復帳號權限
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleBanUser(umSelectedUser.id)}
+                            className="btn-outline"
+                            style={{ borderColor: '#ef4444', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', fontSize: '13px' }}
+                          >
+                            <ShieldBan size={16} /> 暫停帳號 (Ban)
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 基本資料列表 */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '28px' }}>
+                      <div>
+                        <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>電子信箱</div>
+                        <div style={{ fontSize: '14px', color: '#334155', fontWeight: '700', marginTop: '2px', wordBreak: 'break-all' }}>{umSelectedUser.email}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>聯絡電話</div>
+                        <div style={{ fontSize: '14px', color: '#334155', fontWeight: '700', marginTop: '2px' }}>{umSelectedUser.phone || '未填寫'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>性別</div>
+                        <div style={{ fontSize: '14px', color: '#334155', fontWeight: '700', marginTop: '2px' }}>{umSelectedUserDetail?.gender || '未填寫'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>生日</div>
+                        <div style={{ fontSize: '14px', color: '#334155', fontWeight: '700', marginTop: '2px' }}>{umSelectedUserDetail?.birthday || '未填寫'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>Line ID</div>
+                        <div style={{ fontSize: '14px', color: '#334155', fontWeight: '700', marginTop: '2px' }}>{umSelectedUserDetail?.line_id || '未填寫'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>Instagram</div>
+                        <div style={{ fontSize: '14px', color: '#334155', fontWeight: '700', marginTop: '2px' }}>{umSelectedUserDetail?.instagram || '未填寫'}</div>
+                      </div>
+                      <div style={{ gridColumn: 'span 2' }}>
+                        <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>個人簡介</div>
+                        <div style={{ fontSize: '14px', color: '#475569', marginTop: '4px', fontStyle: 'italic', backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '8px' }}>
+                          {umSelectedUserDetail?.bio || '這個會員很懶，還沒有寫個人簡介。'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 信譽評分管理 */}
+                    <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '28px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <TrendingUp size={16} /> 調整信譽積分
+                      </h4>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div>
+                          <div style={{ fontSize: '12px', color: '#94a3b8' }}>目前信譽分數</div>
+                          <div style={{ fontSize: '24px', fontWeight: '800', color: getReputationStatus(umSelectedUser.credit_point ?? 90).color }}>
+                            {umSelectedUser.credit_point ?? 90}
+                          </div>
+                        </div>
+                        <div style={{ borderLeft: '1px solid #cbd5e1', height: '40px', margin: '0 8px' }}></div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={umEditScore}
+                              onChange={(e) => setUmEditScore(e.target.value)}
+                              style={{ width: '80px', padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1', textAlign: 'center', fontSize: '14px', fontWeight: '800' }}
+                            />
+                            <button
+                              onClick={() => handleUpdateUmReputation(umSelectedUser.id, umEditScore)}
+                              className="btn-primary"
+                              style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '13px' }}
+                            >
+                              變更分數
+                            </button>
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                            信譽狀況：<span style={{ fontWeight: '700', color: getReputationStatus(umSelectedUser.credit_point ?? 90).color }}>{getReputationStatus(umSelectedUser.credit_point ?? 90).label}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 歷史揪團與參團紀錄 */}
+                    <div>
+                      <h4 style={{ margin: '0 0 16px 0', fontSize: '15px', color: '#1e293b', borderBottom: '2px solid #cbd5e1', paddingBottom: '8px' }}>
+                        歷史揪團與參團紀錄
+                      </h4>
+                      {umLoadingDetail ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+                          <div className="upload-spinner" style={{ width: '24px', height: '24px', borderWidth: '2px' }}></div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                          
+                          {/* 創房紀錄 (Hosted) */}
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: '800', color: '#64748b', marginBottom: '8px' }}>
+                              🏠 創立的房間 ({umSelectedUserDetail?.hosted_matches?.length || 0})
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto', paddingRight: '4px' }} className="demo-parties-list">
+                              {(umSelectedUserDetail?.hosted_matches || []).map((m) => (
+                                <div
+                                  key={m.id}
+                                  onClick={() => navigate(`/party/${m.id}`, { state: { fromAdmin: true } })}
+                                  style={{
+                                    padding: '10px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #f1f5f9',
+                                    backgroundColor: '#faf5ff',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    transition: 'background-color 0.2s'
+                                  }}
+                                  className="match-history-item"
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                                    <span style={{
+                                      fontSize: '11px',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      border: '1px solid',
+                                      ...getSportBadgeStyle(m.sport_name)
+                                    }}>
+                                      {m.sport_name || '其他'}
+                                    </span>
+                                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {m.title || m.game_name}
+                                    </span>
+                                    <span style={{
+                                      fontSize: '11px',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      border: '1px solid',
+                                      ...getMatchStatusStyle(m.match_status)
+                                    }}>
+                                      {m.status_chinese || m.match_status}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: '#64748b', flexShrink: 0 }}>
+                                    {m.booking_date} {m.time_slot}
+                                  </div>
+                                </div>
+                              ))}
+                              {(umSelectedUserDetail?.hosted_matches || []).length === 0 && (
+                                <div style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center', padding: '12px', fontStyle: 'italic' }}>
+                                  尚無創立房間紀錄
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* 參團紀錄 (Joined) */}
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: '800', color: '#64748b', marginBottom: '8px' }}>
+                              🙋 參加的房間 ({umSelectedUserDetail?.joined_matches?.length || 0})
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto', paddingRight: '4px' }} className="demo-parties-list">
+                              {(umSelectedUserDetail?.joined_matches || []).map((m) => (
+                                <div
+                                  key={m.id}
+                                  onClick={() => navigate(`/party/${m.id}`, { state: { fromAdmin: true } })}
+                                  style={{
+                                    padding: '10px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #f1f5f9',
+                                    backgroundColor: '#f0fdf4',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    transition: 'background-color 0.2s'
+                                  }}
+                                  className="match-history-item"
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                                    <span style={{
+                                      fontSize: '11px',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      border: '1px solid',
+                                      ...getSportBadgeStyle(m.sport_name)
+                                    }}>
+                                      {m.sport_name || '其他'}
+                                    </span>
+                                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {m.title || m.game_name}
+                                    </span>
+                                    <span style={{
+                                      fontSize: '11px',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      border: '1px solid',
+                                      ...getMatchStatusStyle(m.match_status)
+                                    }}>
+                                      {m.status_chinese || m.match_status}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: '#64748b', flexShrink: 0 }}>
+                                    {m.booking_date} {m.time_slot}
+                                  </div>
+                                </div>
+                              ))}
+                              {(umSelectedUserDetail?.joined_matches || []).length === 0 && (
+                                <div style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center', padding: '12px', fontStyle: 'italic' }}>
+                                  尚無參團紀錄
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ backgroundColor: 'white', padding: '60px 24px', borderRadius: '16px', border: '1px solid #e2e8f0', textAlign: 'center', color: '#94a3b8' }}>
+                    <Users size={48} style={{ margin: '0 auto 16px auto', display: 'block', color: '#cbd5e1' }} />
+                    <div style={{ fontSize: '16px', fontWeight: '700' }}>請從左側會員清單選擇一位會員</div>
+                    <div style={{ fontSize: '13px', marginTop: '4px' }}>即可查看詳細個人檔案及揪團歷史紀錄、並進行帳號管理動作。</div>
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
         )}
 
         {/* 回饋類型管理 Tab */}
         {activeTab === 'feedback-types' && (
-          <div className="admin-content">
-            <h2 style={{ marginBottom: '8px' }}>回饋類型管理</h2>
-            <p style={{ color: '#64748b', marginBottom: '32px' }}>管理使用者提交回饋時可選擇的類型選項。</p>
-
-            {/* 現有類型列表 */}
-            <div style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px', marginBottom: '32px' }}>
-              <h3 style={{ marginBottom: '16px', fontSize: '16px' }}>現有回饋類型</h3>
-              {feedbackTypes.length === 0 ? (
-                <div style={{ color: '#94a3b8', textAlign: 'center', padding: '32px' }}>尚無回饋類型，請在下方新增。</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {feedbackTypes.map(ft => (
-                    <div key={ft.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                      <span style={{ flex: 1, fontWeight: '600' }}>{ft.name}</span>
-                      <span style={{ fontSize: '12px', color: '#94a3b8' }}>ID: {ft.id}</span>
-                      <button
-                        onClick={() => handleDeleteFeedbackType(ft.id)}
-                        style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+          <div>
+            <h2 style={{ marginBottom: '24px' }}>回饋類型管理</h2>
+            <div style={{ backgroundColor: 'white', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '32px' }}>
+              <h3 style={{ marginBottom: '20px' }}>新增類型</h3>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  placeholder="類型名稱 (如: 功能建議、檢舉玩家)" 
+                  value={newTypeName}
+                  onChange={(e) => setNewTypeName(e.target.value)}
+                  style={{ flex: 1, margin: 0 }}
+                />
+                <button className="btn-primary" onClick={handleAddFeedbackType}>
+                  <Plus size={18} /> 新增
+                </button>
+              </div>
             </div>
 
-            {/* 新增類型表單 */}
-            <div style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px' }}>
-              <h3 style={{ marginBottom: '16px', fontSize: '16px' }}>新增回饋類型</h3>
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <input
-                  type="text"
-                  className="form-input"
-                  style={{ flex: 1, maxWidth: '360px' }}
-                  placeholder="例如：場地相關、活動建議..."
-                  value={newTypeName}
-                  onChange={e => setNewTypeName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAddFeedbackType()}
-                />
-                <button
-                  className="btn-primary"
-                  onClick={handleAddFeedbackType}
-                  disabled={!newTypeName.trim()}
-                >
-                  <Plus size={16} /> 新增
-                </button>
+            <div style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead style={{ backgroundColor: '#f1f5f9' }}>
+                  <tr>
+                    <th style={{ padding: '16px' }}>ID</th>
+                    <th style={{ padding: '16px' }}>名稱</th>
+                    <th style={{ padding: '16px', textAlign: 'right' }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {feedbackTypes.map(t => (
+                    <tr key={t.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: '16px' }}>{t.id}</td>
+                      <td style={{ padding: '16px', fontWeight: '700' }}>{t.name}</td>
+                      <td style={{ padding: '16px', textAlign: 'right' }}>
+                        <button onClick={() => handleDeleteFeedbackType(t.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {feedbackTypes.length === 0 && (
+                    <tr>
+                      <td colSpan="3" style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>尚未建立任何回饋類型。</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+                {/* 房間狀態調整 Tab */}
+        {activeTab === 'demo_games' && (
+          <div className="admin-content">
+            <h2 style={{ marginBottom: '8px', color: '#1e293b' }}>🛠️ 房間狀態調整 (Room Status Tool)</h2>
+            <p style={{ color: '#64748b', marginBottom: '32px' }}>此為開發調測工具，提供即時搜尋球局，並能強制作為招募中、進行中或已關閉狀態，亦支援微調時間與前推模擬。</p>
+
+            <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
+              {/* 搜尋與篩選列 */}
+              <div style={{ marginBottom: '24px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+                {/* 搜尋框 */}
+                <div style={{ display: 'flex', position: 'relative', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+                  <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px' }} />
+                  <input 
+                    type="text" 
+                    placeholder="搜尋房間名稱或場地..." 
+                    value={demoSearchQuery}
+                    onChange={e => setDemoSearchQuery(e.target.value)}
+                    style={{ 
+                      width: '100%', 
+                      padding: '10px 12px 10px 36px', 
+                      borderRadius: '8px', 
+                      border: '1px solid #cbd5e1', 
+                      fontSize: '13px', 
+                      outline: 'none',
+                      transition: 'border-color 0.2s',
+                    }}
+                  />
+                </div>
+
+                {/* 球類分類選擇器 */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600', marginRight: '4px' }}>球類篩選:</span>
+                  {['全部', ...sportsList.map(sport => sport.name).filter(Boolean)].map(sport => (
+                    <button
+                      key={sport}
+                      onClick={() => setDemoSportFilter(sport)}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '20px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        border: '1px solid',
+                        backgroundColor: demoSportFilter === sport ? '#7995a5' : '#f1f5f9',
+                        color: demoSportFilter === sport ? 'white' : '#475569',
+                        borderColor: demoSportFilter === sport ? '#7995a5' : '#e2e8f0',
+                      }}
+                    >
+                      {sport}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 房間列表 */}
+              <div 
+                className="demo-parties-list"
+                style={{ 
+                  maxHeight: '650px', 
+                  overflowY: 'auto', 
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+                  gap: '16px', 
+                  paddingRight: '6px',
+                  scrollbarWidth: 'thin'
+                }}
+              >
+                {parties
+                  .filter(p => {
+                    const matchesSport = demoSportFilter === '全部' || p.sportName === demoSportFilter;
+                    const matchesSearch = p.title.toLowerCase().includes(demoSearchQuery.toLowerCase()) || 
+                                          p.location.toLowerCase().includes(demoSearchQuery.toLowerCase());
+                    return matchesSport && matchesSearch;
+                  })
+                  .map(p => {
+                    const badgeStyle = getSportBadgeStyle(p.sportName);
+                    return (
+                      <div 
+                        key={p.id} 
+                        style={{ 
+                          padding: '20px', 
+                          backgroundColor: '#ffffff', 
+                          borderRadius: '12px', 
+                          border: '1px solid #e2e8f0',
+                          borderLeft: `4px solid ${badgeStyle.borderColor || '#cbd5e1'}`,
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                          transition: 'all 0.2s',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between'
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '10px', gap: '8px' }}>
+                            <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b', lineHeight: '1.4' }}>{p.title}</div>
+                            <span style={{ 
+                              padding: '2px 8px', 
+                              borderRadius: '4px', 
+                              fontSize: '10px', 
+                              fontWeight: '700',
+                              border: '1px solid',
+                              whiteSpace: 'nowrap',
+                              ...badgeStyle
+                            }}>
+                              {p.sportName}
+                            </span>
+                          </div>
+                          
+                          <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#475569' }}>
+                              <span>📍 {p.location}</span>
+                            </div>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                              <span>狀態：</span>
+                              <span style={{ 
+                                fontWeight: '800', 
+                                color: p.status === '已結束' ? '#ef4444' : p.status === '已開始' ? '#10b981' : '#f59e0b',
+                                backgroundColor: p.status === '已結束' ? '#fef2f2' : p.status === '已開始' ? '#f0fdf4' : '#fffbeb',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                fontSize: '11px'
+                              }}>
+                                {p.status}
+                              </span>
+                              <span style={{ marginLeft: '4px', color: '#94a3b8' }}>({p.time})</span>
+                              {editingGameTimeId !== p.id && (
+                                <button 
+                                  onClick={() => {
+                                    setEditingGameTimeId(p.id);
+                                    const parts = p.time.split(' ');
+                                    setEditGameDate(parts[0] || '');
+                                    setEditGameTimeSlot(parts[1] || '');
+                                  }}
+                                  style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '11px', padding: 0, marginLeft: '8px', textDecoration: 'underline' }}
+                                >
+                                  修改時間
+                                </button>
+                              )}
+                            </div>
+
+                            {/* 修改時間輸入區 */}
+                            {editingGameTimeId === p.id && (
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap', backgroundColor: '#f8fafc', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <input 
+                                  type="date" 
+                                  value={editGameDate} 
+                                  onChange={e => setEditGameDate(e.target.value)} 
+                                  style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '11px', outline: 'none' }}
+                                />
+                                <input 
+                                  type="text" 
+                                  value={editGameTimeSlot} 
+                                  placeholder="例如 14:00-16:00"
+                                  onChange={e => setEditGameTimeSlot(e.target.value)} 
+                                  style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '11px', width: '110px', outline: 'none' }}
+                                />
+                                <button 
+                                  onClick={() => handleUpdateGameTime(p.id)}
+                                  style={{ padding: '4px 8px', backgroundColor: '#7995a5', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
+                                >
+                                  儲存
+                                </button>
+                                <button 
+                                  onClick={() => setEditingGameTimeId(null)}
+                                  style={{ padding: '4px 8px', backgroundColor: 'white', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
+                          <button className="btn-outline" style={{ fontSize: '11px', padding: '4px 8px', borderColor: '#fcd34d', borderRadius: '6px', flex: 1 }} onClick={() => handleUpdatePartyStatus(p.id, '即將開始', '10 分鐘後')}>
+                            招募中
+                          </button>
+                          <button className="btn-outline" style={{ fontSize: '11px', padding: '4px 8px', borderColor: '#fcd34d', borderRadius: '6px', flex: 1 }} onClick={() => handleUpdatePartyStatus(p.id, '已開始', '進行中')}>
+                            已開始
+                          </button>
+                          <button className="btn-outline" style={{ fontSize: '11px', padding: '4px 8px', borderColor: '#fcd34d', borderRadius: '6px', flex: 1 }} onClick={() => handleUpdatePartyStatus(p.id, '已結束', '昨天')}>
+                            已結束
+                          </button>
+                          <button className="btn-outline" style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '6px', flex: 1 }} onClick={() => handleUpdatePartyStatus(p.id, '招募中', '今日 20:00')}>
+                            還原
+                          </button>
+                          <button className="btn-outline" style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '6px', borderColor: '#cbd5e1', color: '#64748b', flex: '1 1 100%', marginTop: '4px' }} onClick={() => handleSetTimeBefore30Min(p.id)}>
+                            B4 30MIN (時間前推 30 分鐘)
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                {parties.filter(p => {
+                  const matchesSport = demoSportFilter === '全部' || p.sportName === demoSportFilter;
+                  const matchesSearch = p.title.toLowerCase().includes(demoSearchQuery.toLowerCase()) || 
+                                        p.location.toLowerCase().includes(demoSearchQuery.toLowerCase());
+                  return matchesSport && matchesSearch;
+                }).length === 0 && (
+                  <div style={{ gridColumn: 'span 3', textAlign: 'center', padding: '40px 20px', color: '#94a3b8', fontSize: '13px' }}>
+                    沒有符合搜尋與篩選條件的房間。
+                  </div>
+                )}
               </div>
             </div>
           </div>
         )}
 
-        {/* Demo 工具箱 Tab */}
-        {activeTab === 'demo' && (
-          <div className="admin-content">
-            <h2 style={{ marginBottom: '8px', color: '#b45309' }}>🛠️ Demo 展示工具箱</h2>
-            <p style={{ color: '#64748b', marginBottom: '32px' }}>這些功能僅供開發與展示使用，可快速改變系統狀態以利 Demo。</p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
-              
-              {/* 房間狀態控制 */}
-              <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #fcd34d' }}>
-                <h3 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <MapPinned size={20} color="#b45309" /> 快速調整房間狀態
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {parties.map(p => (
-                    <div key={p.id} style={{ padding: '16px', backgroundColor: '#fffbeb', borderRadius: '12px', border: '1px solid #fef3c7' }}>
-                      <div style={{ fontWeight: '700', marginBottom: '4px' }}>{p.title}</div>
-                      <div style={{ fontSize: '12px', color: '#b45309', marginBottom: '12px' }}>
-                        目前狀態：<span style={{ fontWeight: '800' }}>{p.status}</span> ({p.time})
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <button className="btn-outline" style={{ fontSize: '12px', padding: '4px 8px', borderColor: '#fcd34d' }} onClick={() => handleUpdatePartyStatus(p.id, '即將開始', '10 分鐘後')}>
-                          即將開始
-                        </button>
-                        <button className="btn-outline" style={{ fontSize: '12px', padding: '4px 8px', borderColor: '#fcd34d' }} onClick={() => handleUpdatePartyStatus(p.id, '已開始', '進行中')}>
-                          已開始
-                        </button>
-                        <button className="btn-outline" style={{ fontSize: '12px', padding: '4px 8px', borderColor: '#fcd34d' }} onClick={() => handleUpdatePartyStatus(p.id, '已結束', '昨天')}>
-                          已結束
-                        </button>
-                        <button className="btn-outline" style={{ fontSize: '12px', padding: '4px 8px' }} onClick={() => handleUpdatePartyStatus(p.id, '招募中', '今日 20:00')}>
-                          還原
-                        </button>
-                      </div>
+      </main>
+
+      {/* 編輯系統公告 Modal */}
+      {editingAnnouncement && (
+        <div className="modal-overlay" onClick={() => setEditingAnnouncement(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Pencil size={20} /> 編輯系統公告
+              </h3>
+              <button className="modal-close" onClick={() => setEditingAnnouncement(null)}>×</button>
+            </div>
+            <form onSubmit={handleEditAnnouncementSubmit} style={{ marginTop: '20px' }}>
+              <div className="form-group">
+                <label className="form-label">公告標題</label>
+                <input 
+                  required 
+                  type="text" 
+                  className="form-input" 
+                  value={editingAnnouncement.title} 
+                  onChange={e => setEditingAnnouncement({ ...editingAnnouncement, title: e.target.value })} 
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">內容</label>
+                <textarea 
+                  required 
+                  className="form-input" 
+                  rows="4" 
+                  value={editingAnnouncement.content} 
+                  onChange={e => setEditingAnnouncement({ ...editingAnnouncement, content: e.target.value })}
+                  style={{ resize: 'none' }}
+                ></textarea>
+              </div>
+              <div className="form-group">
+                <label className="form-label">公告圖片 (最多 3 張，可從裝置上傳)</label>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
+                  {/* 預覽現有圖片或本機新選取圖片 */}
+                  {editFiles.map((item) => (
+                    <div key={item.id} style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                      <SafeImage 
+                        src={item.type === 'existing' ? item.url : item.previewUrl} 
+                        alt="upload-preview" 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditFiles(editFiles.filter(f => f.id !== item.id));
+                        }}
+                        style={{ position: 'absolute', top: '2px', right: '2px', backgroundColor: 'rgba(239, 68, 68, 0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', fontSize: '12px', padding: 0 }}
+                      >
+                        &times;
+                      </button>
                     </div>
                   ))}
+                  
+                  {/* 上傳按鈕 */}
+                  {editFiles.length < 3 && (
+                    <label style={{ width: '80px', height: '80px', border: '2px dashed #cbd5e1', borderRadius: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: '#64748b' }}>
+                      <Plus size={20} />
+                      <span style={{ fontSize: '11px', marginTop: '4px' }}>選擇檔案</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (editFiles.length >= 3) {
+                            alert('最多只能選擇 3 張圖片。');
+                            return;
+                          }
+                          const previewUrl = URL.createObjectURL(file);
+                          setEditFiles(prev => [...prev, {
+                            id: Date.now().toString(),
+                            type: 'new',
+                            file,
+                            previewUrl
+                          }]);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
                 </div>
               </div>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '28px' }}>
+                <button type="button" className="btn-outline" style={{ flex: 1, padding: '12px', borderRadius: '12px' }} onClick={() => setEditingAnnouncement(null)}>取消</button>
+                <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', borderRadius: '12px' }}>儲存修改</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
-              {/* 其他展示工具 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                
-                {/* 身份快速切換 */}
-                <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                  <h3 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <UserCircle size={20} color="#7995a5" /> 模擬玩家信譽設定
-                  </h3>
-                  
-                  {/* 玩家選擇 */}
-                  <div className="form-group" style={{ marginBottom: '16px' }}>
-                    <label className="form-label" style={{ fontSize: '13px' }}>選擇目標玩家</label>
-                    <select 
-                      className="form-input" 
-                      value={selectedUser.id} 
-                      onChange={(e) => {
-                        const user = users.find(u => u.id === parseInt(e.target.value, 10));
-                        setSelectedUser(user);
-                      }}
-                    >
-                      {users.map(u => (
-                        <option key={u.id} value={u.id}>{u.name} (現有積分: {u.reputation})</option>
-                      ))}
-                    </select>
+      {/* Court Manager Modal (Desktop) */}
+      {selectedVenueForCourts && (
+        <div className="modal-overlay" onClick={() => setSelectedVenueForCourts(null)} style={{ zIndex: 1500 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ width: '90%', maxWidth: '900px', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+            <div className="modal-header" style={{ paddingBottom: '16px', borderBottom: '1px solid #e2e8f0' }}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Wrench size={20} color="#0ea5e9" /> {selectedVenueForCourts.name} - 球場管理
+              </h3>
+              <button className="modal-close" onClick={() => setSelectedVenueForCourts(null)}>×</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', padding: '20px 0', overflowY: 'auto', flex: 1 }}>
+              {/* Left Side: Court List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <h4 style={{ margin: 0, fontSize: '16px', color: '#1e293b' }}>現有球場列表 ({venueCourts.length})</h4>
+                {isCourtsLoading ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                    <div className="upload-spinner" style={{ margin: '0 auto 12px' }}></div>
+                    載入中...
                   </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '50vh', overflowY: 'auto', paddingRight: '8px' }}>
+                    {venueCourts.map((court, idx) => (
+                      <div key={court.id} style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontWeight: '800', fontSize: '15px', color: '#1e293b', marginBottom: '6px' }}>
+                            球場 #{idx + 1}
+                            <span style={{ marginLeft: '8px', fontSize: '11px', padding: '2px 6px', borderRadius: '10px', fontWeight: 'bold', backgroundColor: court.occupied ? '#fee2e2' : '#dcfce7', color: court.occupied ? '#ef4444' : '#22c55e' }}>
+                              {court.occupied ? '使用中' : '空閒'}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#64748b', display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                            {court.sport_names && court.sport_names.length > 0 ? (
+                              court.sport_names.map((name, i) => {
+                                const badge = getSportBadgeStyle(name);
+                                return (
+                                  <span key={i} style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '4px', border: '1px solid', ...badge }}>{name}</span>
+                                );
+                              })
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontSize: '11px' }}>無指定運動</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>
+                            單價: NT$ {court.base_price} / 小時
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button 
+                            onClick={() => handleStartEditCourt(court)}
+                            style={{ padding: '6px 12px', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <Pencil size={14} /> 編輯
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteCourt(court.id)}
+                            style={{ padding: '6px 12px', fontSize: '13px', fontWeight: 'bold', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <Trash2 size={14} /> 刪除
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {venueCourts.length === 0 && (
+                      <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', border: '2px dashed #e2e8f0', borderRadius: '12px', fontSize: '13px' }}>
+                        此場館目前沒有設定任何球場，請在右側新增。
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
-                  <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '12px', marginBottom: '16px' }}>
-                    <div style={{ fontSize: '14px', color: '#64748b' }}>目前選擇：<span style={{ fontWeight: '800', color: '#1e293b' }}>{selectedUser.name}</span></div>
-                    <div style={{ fontSize: '14px', color: '#64748b', marginTop: '4px' }}>設定積分：<span style={{ fontWeight: '800', fontSize: '18px', color: '#1e293b' }}>{selectedUser.reputation}</span></div>
-                    <div style={{ fontSize: '13px', fontWeight: '700', color: getReputationStatus(selectedUser.reputation).color, marginTop: '4px' }}>
-                      系統狀態：{getReputationStatus(selectedUser.reputation).label}
+              {/* Right Side: Form */}
+              <div style={{ borderLeft: '1px solid #e2e8f0', paddingLeft: '24px' }}>
+                <h4 style={{ margin: '0 0 16px', fontSize: '16px', color: '#1e293b' }}>
+                  {editingCourt ? '📝 編輯球場資訊' : '➕ 新增個別球場'}
+                </h4>
+                <form onSubmit={handleCourtFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ marginBottom: '8px', display: 'block', fontWeight: '700' }}>支援運動種類 (可多選)</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#f8fafc' }}>
+                      {sportsList.map(sport => {
+                        const sportId = Number(sport.id);
+                        const isChecked = newCourt.sports.includes(sportId);
+                        return (
+                          <label key={sport.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', userSelect: 'none', color: '#334155' }}>
+                            <input 
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setNewCourt(prev => ({ ...prev, sports: [...prev.sports, sportId] }));
+                                } else {
+                                  setNewCourt(prev => ({ ...prev, sports: prev.sports.filter(id => id !== sportId) }));
+                                }
+                              }}
+                              style={{ width: '16px', height: '16px', accentColor: '#0ea5e9' }}
+                            />
+                            {sport.name}
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <button className="btn-outline" style={{ fontSize: '13px', borderColor: '#ef4444' }} onClick={() => handleUpdateReputation(40)}>
-                      40 (Ban Forever)
-                    </button>
-                    <button className="btn-outline" style={{ fontSize: '13px', borderColor: '#f59e0b' }} onClick={() => handleUpdateReputation(50)}>
-                      50 (懲罰/觀察)
-                    </button>
-                    <button className="btn-outline" style={{ fontSize: '13px', borderColor: '#fcd34d' }} onClick={() => handleUpdateReputation(60)}>
-                      60 (警告/禁創房)
-                    </button>
-                    <button className="btn-outline" style={{ fontSize: '13px', borderColor: '#10b981' }} onClick={() => handleUpdateReputation(90)}>
-                      90 (恢復正常)
-                    </button>
-                  </div>
-                </div>
 
-                {/* 天氣/系統狀態控制 */}
-                <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                  <h3 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <CloudRain size={20} color="#7995a5" /> 運動適合指數 (天氣系統)
-                  </h3>
-                  <div style={{ marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '14px', fontWeight: '700' }}>適合程度</span>
-                      <span style={{ fontSize: '16px', fontWeight: '800', color: weatherIndex > 50 ? '#10b981' : '#ef4444' }}>{weatherIndex}%</span>
-                    </div>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: '700' }}>每小時單價 (NT$)</label>
                     <input 
-                      type="range" 
-                      min="0" 
-                      max="100" 
-                      value={weatherIndex} 
-                      onChange={(e) => setWeatherIndex(parseInt(e.target.value, 10))}
-                      onMouseUp={async (e) => {
-                        const val = parseInt(e.target.value, 10);
-                        try {
-                          await adminApi.updateDemoWeather({ value: val });
-                        } catch (error) {
-                          console.error('Update weather error:', error);
-                        }
-                      }}
-                      onTouchEnd={async (e) => {
-                        const val = parseInt(e.target.value, 10);
-                        try {
-                          await adminApi.updateDemoWeather({ value: val });
-                        } catch (error) {
-                          console.error('Update weather error:', error);
-                        }
-                      }}
-                      style={{ width: '100%', cursor: 'pointer', accentColor: '#7995a5' }}
+                      required
+                      type="number" 
+                      min="0"
+                      className="form-input" 
+                      placeholder="例如：300"
+                      value={newCourt.base_price}
+                      onChange={e => setNewCourt({ ...newCourt, base_price: parseInt(e.target.value, 10) || 0 })}
                     />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                      <span>0% (暴雨危險)</span>
-                      <span>100% (晴朗舒適)</span>
-                    </div>
                   </div>
-                  <button className="btn-outline" style={{ width: '100%' }} onClick={async () => {
-                    try {
-                      await Promise.all([
-                        adminApi.updateDemoWeather({ value: 80 }),
-                        selectedUser?.id ? adminApi.updateUserReputation(selectedUser.id, 90) : Promise.resolve()
-                      ]);
-                      setUsers(users.map(u => u.id === selectedUser.id ? { ...u, reputation: 90 } : u));
-                      setSelectedUser(prev => prev ? { ...prev, reputation: 90 } : prev);
-                      setWeatherIndex(80);
-                      alert('系統已重置為初始狀態');
-                    } catch (error) {
-                      console.error('Reset error:', error);
-                      alert('重置失敗');
-                    }
-                  }}>
-                    <RefreshCcw size={16} /> 重置所有 Demo 數據
-                  </button>
+
+                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <input 
+                      type="checkbox" 
+                      id="court-occupied-checkbox-desktop"
+                      checked={newCourt.occupied}
+                      onChange={e => setNewCourt({ ...newCourt, occupied: e.target.checked })}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#0ea5e9' }}
+                    />
+                    <label htmlFor="court-occupied-checkbox-desktop" className="form-label" style={{ margin: 0, cursor: 'pointer', userSelect: 'none', fontWeight: '700' }}>
+                      設定此球場為使用中 (暫時不開放預訂)
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
+                    <button 
+                      type="submit" 
+                      disabled={isSavingCourt}
+                      className="btn-primary" 
+                      style={{ flex: 1, padding: '12px', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', border: 'none', cursor: 'pointer', backgroundColor: '#0ea5e9', color: 'white' }}
+                    >
+                      {isSavingCourt ? '儲存中...' : (editingCourt ? '儲存修改' : '確認新增')}
+                    </button>
+                    {editingCourt && (
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setEditingCourt(null);
+                          setNewCourt({ sports: [], base_price: 300, occupied: false });
+                        }}
+                        className="btn-outline" 
+                        style={{ flex: 1, padding: '12px', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer', margin: 0 }}
+                      >
+                        取消編輯
+                      </button>
+                    )}
+                  </div>
+                </form>
               </div>
             </div>
           </div>
         </div>
       )}
+      {/* 全域提交中遮罩 */}
+      {isSubmitting && (
+        <div className="modal-overlay" style={{ zIndex: 2000, backgroundColor: 'rgba(0,0,0,0.6)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: 'white' }}>
+            <div className="upload-spinner" style={{ width: '40px', height: '40px', borderWidth: '4px', marginBottom: '16px' }}></div>
+            <span style={{ fontSize: '16px', fontWeight: '700' }}>正在上傳圖片並發佈公告，請稍候...</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+  }
+  // --- Mobile View Helper Functions ---
+  const renderMobileDashboard = () => (
+    <div>
+      <h2 style={{ fontSize: '20px', marginBottom: '16px', fontWeight: '800' }}>揪團數據統計</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+        <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <div style={{ color: '#64748b', fontSize: '13px', fontWeight: '700', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <TrendingUp size={14} color="#7995a5" /> 今日活躍人數
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '800', color: '#1e293b' }}>{analytics.active_users}</div>
+          <div style={{ color: '#10b981', fontSize: '11px', marginTop: '4px', fontWeight: '600' }}>即時更新中</div>
+        </div>
+        <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <div style={{ color: '#64748b', fontSize: '13px', fontWeight: '700', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <BarChart3 size={14} color="#10b981" /> 進行中揪團
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '800', color: '#1e293b' }}>{analytics.active_games}</div>
+          <div style={{ color: '#64748b', fontSize: '11px', marginTop: '4px', fontWeight: '600' }}>即時更新中</div>
+        </div>
+        <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <div style={{ color: '#64748b', fontSize: '13px', fontWeight: '700', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Bell size={14} color="#f59e0b" /> 系統訊息
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '800', color: '#1e293b' }}>{analytics.system_messages}</div>
+          <div style={{ color: '#f59e0b', fontSize: '11px', marginTop: '4px', fontWeight: '600' }}>即時更新中</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ fontSize: '15px', margin: '0 0 12px 0', fontWeight: '800' }}>近期活動熱度</h3>
+          <div style={{ height: '120px', display: 'flex', alignItems: 'flex-end', gap: '8px', paddingBottom: '8px' }}>
+            {(analytics.daily_activity && analytics.daily_activity.length > 0 ? analytics.daily_activity : [0,0,0,0,0,0,0]).map((h, i) => (
+              <div key={i} style={{ flex: 1, backgroundColor: '#f1f5f9', borderRadius: '4px', height: '100%', position: 'relative' }}>
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#7995a5', height: `${h}%`, borderRadius: '4px' }}></div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', fontSize: '10px' }}>
+            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ fontSize: '15px', margin: '0 0 12px 0', fontWeight: '800' }}>熱門運動比例</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {(analytics.popular_sports && analytics.popular_sports.length > 0 ? analytics.popular_sports : [['無資料', '0%']]).map(([name, pct], i) => (
+              <div key={i}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', fontSize: '12px' }}>
+                  <span>{name}</span><span>{pct}</span>
+                </div>
+                <div style={{ height: '6px', backgroundColor: '#f1f5f9', borderRadius: '3px' }}>
+                  <div style={{ height: '100%', backgroundColor: '#7995a5', width: pct, borderRadius: '3px' }}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderMobileVenues = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h2 style={{ fontSize: '20px', margin: 0, fontWeight: '800' }}>場地管理</h2>
+      </div>
+
+      <div className="admin-sub-tabs">
+        <button 
+          className={`admin-sub-tab-btn ${venueSubTab === 'list' ? 'active' : ''}`}
+          onClick={() => setVenueSubTab('list')}
+        >
+          場地列表
+        </button>
+        <button 
+          className={`admin-sub-tab-btn ${venueSubTab === 'create' ? 'active' : ''}`}
+          onClick={() => {
+            setVenueSubTab('create');
+            if (!editingVenueId) {
+              setNewVenue({ name: '', city: '桃園市', district: '桃園區', street_line: '', facilities: [] });
+              setCourtCounts([{ sport_id: '', count: 1 }]);
+            }
+          }}
+        >
+          {editingVenueId ? "編輯場地" : "新增場地"}
+        </button>
+      </div>
+
+      {venueSubTab === 'list' ? (
+        <div>
+          {/* Filters */}
+          <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>縣市</span>
+              <select className="form-input" style={{ margin: 0 }} value={filterCity} onChange={(e) => { setFilterCity(e.target.value); setFilterDistrict(''); }}>
+                <option value="">全部縣市</option>
+                {cityOptions.map(city => <option key={city} value={city}>{city}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>區域</span>
+              <select className="form-input" style={{ margin: 0 }} value={filterDistrict} onChange={(e) => setFilterDistrict(e.target.value)} disabled={!filterCity}>
+                <option value="">{filterCity ? "全部區域" : "請先選擇縣市"}</option>
+                {districtOptions.map(dist => <option key={dist} value={dist}>{dist}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>運動</span>
+              <select className="form-input" style={{ margin: 0 }} value={filterSport} onChange={(e) => setFilterSport(e.target.value)}>
+                <option value="">全部運動</option>
+                {sportsList.map(sport => <option key={sport.id} value={sport.id}>{sport.name}</option>)}
+              </select>
+            </div>
+            <button className="btn-outline" style={{ marginTop: '8px', padding: '8px 16px', width: '100%', margin: 0 }} onClick={() => { setFilterCity(''); setFilterDistrict(''); setFilterSport(''); }}>
+              重置篩選
+            </button>
+          </div>
+
+          {/* Cards List */}
+          <div>
+            {venues.map(v => (
+              <div key={v.id} className="admin-venue-card">
+                <div className="admin-venue-card-header">
+                  <h4 className="admin-venue-card-title">{v.name}</h4>
+                  <span style={{ fontSize: '12px', fontWeight: '700', color: '#0284c7' }}>{v.court_count} 個球場</span>
+                </div>
+                <p className="admin-venue-card-address">📍 {v.address}</p>
+                {v.opening_hours && (
+                  <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 8px 0', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                    🕒 平日: {v.opening_hours.weekdays || '無'} | 假日: {v.opening_hours.weekends || '無'}
+                    {v.opening_hours.closed_days && v.opening_hours.closed_days.length > 0 && (
+                      <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
+                        ({v.opening_hours.closed_days.join('、')}公休)
+                      </span>
+                    )}
+                  </p>
+                )}
+                <div className="admin-venue-card-details">
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                    {v.facilities.map((f, i) => (
+                      <span key={i} style={{ fontSize: '11px', backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>{f}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="admin-venue-card-actions">
+                  <button onClick={() => handleOpenCourtManager(v)} style={{ color: '#0ea5e9', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'bold' }}>
+                    <Wrench size={16} /> 球場
+                  </button>
+                  <button onClick={() => { handleStartEdit(v); setVenueSubTab('create'); }} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'bold' }}>
+                    <Pencil size={16} /> 編輯
+                  </button>
+                  <button onClick={() => handleDeleteVenue(v.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'bold' }}>
+                    <Trash2 size={16} /> 刪除
+                  </button>
+                </div>
+              </div>
+            ))}
+            {venues.length === 0 && (
+              <div style={{ backgroundColor: 'white', padding: '32px', textAlign: 'center', borderRadius: '12px', border: '1px solid #e2e8f0', color: '#94a3b8' }}>
+                {hasActiveFilter ? "目前無符合條件的場地。" : "請選擇篩選條件以查詢場地。"}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Add/Edit Form */
+        <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ marginBottom: '16px', fontWeight: '800' }}>{editingVenueId ? "編輯場地資料" : "新增場地資料"}</h3>
+          <form onSubmit={async (e) => {
+            await handleAddVenue(e);
+            setVenueSubTab('list');
+          }} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="form-group">
+              <label className="form-label">場地名稱</label>
+              <input required type="text" className="form-input" placeholder="例如：板橋第二運動場" value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">縣市</label>
+              <select 
+                className="form-input" 
+                value={newVenue.city} 
+                onChange={e => {
+                  const selectedCity = e.target.value;
+                  const dists = citiesToUse[selectedCity] || [];
+                  setNewVenue({
+                    ...newVenue, 
+                    city: selectedCity, 
+                    district: dists[0] || ''
+                  });
+                }}
+              >
+                {Object.keys(citiesToUse).map(city => (
+                  <option key={city} value={city}>{city}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">區域</label>
+              <select 
+                className="form-input" 
+                value={newVenue.district} 
+                onChange={e => setNewVenue({...newVenue, district: e.target.value})}
+              >
+                {(citiesToUse[newVenue.city] || []).map(dist => (
+                  <option key={dist} value={dist}>{dist}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">詳細地址</label>
+              <input required type="text" className="form-input" placeholder="例如：雙十路二段100號" value={newVenue.street_line} onChange={e => setNewVenue({...newVenue, street_line: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">營業時間 (平日)</label>
+              <input required type="text" className="form-input" placeholder="例如：08:00-22:00" value={newVenue.weekdays_hours || ''} onChange={e => setNewVenue({...newVenue, weekdays_hours: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">營業時間 (假日)</label>
+              <input required type="text" className="form-input" placeholder="例如：08:00-22:00" value={newVenue.weekends_hours || ''} onChange={e => setNewVenue({...newVenue, weekends_hours: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: '700' }}>公休日 (可複選)</label>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '6px' }}>
+                {['週一', '週二', '週三', '週四', '週五', '週六', '週日'].map(day => {
+                  const isClosed = newVenue.closed_days?.includes(day);
+                  return (
+                    <label key={day} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={isClosed} 
+                        onChange={e => {
+                          const checked = e.target.checked;
+                          const currentClosed = newVenue.closed_days || [];
+                          if (checked) {
+                            setNewVenue({ ...newVenue, closed_days: [...currentClosed, day] });
+                          } else {
+                            setNewVenue({ ...newVenue, closed_days: currentClosed.filter(d => d !== day) });
+                          }
+                        }} 
+                      />
+                      {day}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            {!editingVenueId && (
+              <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <label className="form-label" style={{ fontWeight: '700', marginBottom: 0 }}>主要運動球類與數量 (可新增 1 至 4 種)</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {courtCounts.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <select 
+                        required
+                        className="form-input" 
+                        style={{ flex: 2, margin: 0, padding: '8px', fontSize: '13px' }}
+                        value={item.sport_id} 
+                        onChange={e => {
+                          const updated = [...courtCounts];
+                          updated[idx].sport_id = e.target.value;
+                          setCourtCounts(updated);
+                        }}
+                      >
+                        <option value="">選擇球類</option>
+                        {sportsList.map(sport => (
+                          <option key={sport.id} value={sport.id}>{sport.name}</option>
+                        ))}
+                      </select>
+                      <input 
+                        required
+                        type="number" 
+                        min="1" 
+                        className="form-input" 
+                        style={{ flex: 1, margin: 0, padding: '8px', fontSize: '13px' }}
+                        placeholder="數量" 
+                        value={item.count} 
+                        onChange={e => {
+                          const updated = [...courtCounts];
+                          updated[idx].count = parseInt(e.target.value, 10) || 1;
+                          setCourtCounts(updated);
+                        }} 
+                      />
+                      {courtCounts.length > 1 && (
+                        <button 
+                          type="button" 
+                          className="btn-outline" 
+                          style={{ padding: '6px 8px', color: '#ef4444', borderColor: '#fee2e2', backgroundColor: '#fef2f2', margin: 0, fontSize: '12px' }}
+                          onClick={() => {
+                            setCourtCounts(courtCounts.filter((_, i) => i !== idx));
+                          }}
+                        >
+                          移除
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {courtCounts.length < 4 && (
+                  <button 
+                    type="button" 
+                    className="btn-outline" 
+                    style={{ alignSelf: 'flex-start', padding: '4px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    onClick={() => {
+                      setCourtCounts([...courtCounts, { sport_id: '', count: 1 }]);
+                    }}
+                  >
+                    <Plus size={12} /> 新增運動項目
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="form-group">
+              <label className="form-label" style={{ marginBottom: '8px', display: 'block' }}>設施 (複選)</label>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#f8fafc' }}>
+                {defaultFacilities.map((fac) => (
+                  <label key={fac} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', color: '#334155' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={newVenue.facilities.includes(fac)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setNewVenue({ ...newVenue, facilities: [...newVenue.facilities, fac] });
+                        } else {
+                          setNewVenue({ ...newVenue, facilities: newVenue.facilities.filter(f => f !== fac) });
+                        }
+                      }}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                    />
+                    {fac}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <button type="submit" className="login-button" style={{ flex: 1 }}>
+                儲存
+              </button>
+              <button type="button" className="btn-outline" onClick={() => { handleCancelEdit(); setVenueSubTab('list'); }} style={{ flex: 1, margin: 0 }}>
+                取消
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderMobileAnnouncements = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h2 style={{ fontSize: '20px', margin: 0, fontWeight: '800' }}>系統公告管理</h2>
+      </div>
+
+      <div className="admin-sub-tabs">
+        <button 
+          className={`admin-sub-tab-btn ${announcementSubTab === 'list' ? 'active' : ''}`}
+          onClick={() => setAnnouncementSubTab('list')}
+        >
+          已發佈公告
+        </button>
+        <button 
+          className={`admin-sub-tab-btn ${announcementSubTab === 'create' ? 'active' : ''}`}
+          onClick={() => setAnnouncementSubTab('create')}
+        >
+          發佈新公告
+        </button>
+      </div>
+
+      {announcementSubTab === 'create' ? (
+        <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '800' }}><MessageSquarePlus size={20} /> 發佈新公告</h3>
+          <form onSubmit={async (e) => {
+            await handleAddAnnouncement(e);
+            setAnnouncementSubTab('list');
+          }}>
+            <div className="form-group">
+              <label className="form-label">發佈對象 (發送系統推播)</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', marginBottom: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: '#475569' }}>
+                  <input
+                    type="radio"
+                    name="announcementTarget"
+                    value="all"
+                    checked={announcementTarget === 'all'}
+                    onChange={() => setAnnouncementTarget('all')}
+                  />
+                  全部會員
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: '#475569' }}>
+                  <input
+                    type="radio"
+                    name="announcementTarget"
+                    value="organizer"
+                    checked={announcementTarget === 'organizer'}
+                    onChange={() => setAnnouncementTarget('organizer')}
+                  />
+                  特定球局房主
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: '#475569' }}>
+                  <input
+                    type="radio"
+                    name="announcementTarget"
+                    value="room_members"
+                    checked={announcementTarget === 'room_members'}
+                    onChange={() => setAnnouncementTarget('room_members')}
+                  />
+                  房間所有成員
+                </label>
+              </div>
+            </div>
+
+            {(announcementTarget === 'organizer' || announcementTarget === 'room_members') && (
+              <div className="form-group">
+                <label className="form-label" style={{ color: '#0284c7' }}>選擇目標球局</label>
+                <select
+                  required
+                  className="form-input"
+                  value={selectedBroadcastGameId}
+                  onChange={(e) => setSelectedBroadcastGameId(e.target.value)}
+                  style={{ borderColor: '#0284c7' }}
+                >
+                  <option value="">-- 請選擇球局 --</option>
+                  {parties.map((party) => (
+                    <option key={party.id} value={party.id}>
+                      【ID: {party.id}】{party.sportName} - {party.title} ({party.time})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label">公告標題</label>
+              <input required type="text" className="form-input" placeholder="輸入標題" value={newAnnouncement.title} onChange={e => setNewAnnouncement({...newAnnouncement, title: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">內容</label>
+              <textarea required className="form-input" rows="4" placeholder="輸入公告詳細內容..." value={newAnnouncement.content} onChange={e => setNewAnnouncement({...newAnnouncement, content: e.target.value})} style={{ resize: 'none' }}></textarea>
+            </div>
+            <div className="form-group">
+              <label className="form-label">公告圖片 (最多 3 張，可從裝置上傳)</label>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
+                {selectedFiles.map((fileItem) => (
+                  <div key={fileItem.id} style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                    <img src={fileItem.previewUrl} alt="upload-preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFiles(selectedFiles.filter(item => item.id !== fileItem.id));
+                      }}
+                      style={{ position: 'absolute', top: '2px', right: '2px', backgroundColor: 'rgba(239, 68, 68, 0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', fontSize: '12px', padding: 0 }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+                
+                {selectedFiles.length < 3 && (
+                  <label style={{ width: '80px', height: '80px', border: '2px dashed #cbd5e1', borderRadius: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: '#64748b' }}>
+                    <Plus size={20} />
+                    <span style={{ fontSize: '11px', marginTop: '4px' }}>選擇檔案</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (selectedFiles.length >= 3) {
+                          alert('最多只能選擇 3 張圖片。');
+                          return;
+                        }
+                        const previewUrl = URL.createObjectURL(file);
+                        setSelectedFiles(prev => [...prev, { id: Date.now().toString(), file, previewUrl }]);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+            <button type="submit" className="login-button">發佈公告</button>
+          </form>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {announcements.map(a => (
+            <div key={a.id} style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontWeight: '700', fontSize: '15px' }}>{a.title}</span>
+                <span style={{ color: '#94a3b8', fontSize: '11px' }}>{a.date}</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>{a.content}</p>
+              
+              {a.photo && a.photo.length > 0 && (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                  {a.photo.map((p, idx) => (
+                    <SafeImage key={idx} src={p} alt={`Photo ${idx+1}`} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', marginTop: '12px', paddingTop: '8px' }}>
+                <button 
+                  onClick={() => {
+                    setEditingAnnouncement(a);
+                    setEditFiles((a.photo || []).map((url, idx) => ({
+                      id: `existing-${idx}`,
+                      type: 'existing',
+                      url: url
+                    })));
+                  }}
+                  style={{ color: '#0284c7', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px' }}
+                >
+                  <Pencil size={16} /> 編輯
+                </button>
+                <button 
+                  onClick={() => handleDeleteAnnouncement(a.id)}
+                  style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px' }}
+                >
+                  <Trash2 size={16} /> 刪除
+                </button>
+              </div>
+            </div>
+          ))}
+          {announcements.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              目前尚無任何發佈的公告。
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderMobileFeedbacks = () => (
+    <div>
+      <h2 style={{ fontSize: '20px', marginBottom: '16px', fontWeight: '800' }}>使用者建議與回饋</h2>
+      
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <button 
+          onClick={() => setFeedbackFilter('pending')}
+          style={{ 
+            flex: 1,
+            padding: '8px', 
+            borderRadius: '20px', 
+            border: '1px solid #cbd5e1', 
+            backgroundColor: feedbackFilter === 'pending' ? '#7995a5' : 'white', 
+            color: feedbackFilter === 'pending' ? 'white' : '#475569',
+            fontWeight: 'bold',
+            fontSize: '13px',
+            cursor: 'pointer'
+          }}
+        >
+          待處理 ({feedbacks.filter(f => !f.is_handled).length})
+        </button>
+        <button 
+          onClick={() => setFeedbackFilter('handled')}
+          style={{ 
+            flex: 1,
+            padding: '8px', 
+            borderRadius: '20px', 
+            border: '1px solid #cbd5e1', 
+            backgroundColor: feedbackFilter === 'handled' ? '#7995a5' : 'white', 
+            color: feedbackFilter === 'handled' ? 'white' : '#475569',
+            fontWeight: 'bold',
+            fontSize: '13px',
+            cursor: 'pointer'
+          }}
+        >
+          已完成 ({feedbacks.filter(f => f.is_handled).length})
+        </button>
+      </div>
+      
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {feedbacks.filter(f => feedbackFilter === 'pending' ? !f.is_handled : f.is_handled).map(f => (
+          <div key={f.id} style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '14px' }}>{f.user_name || `User #${f.user}`}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8' }}>{f.created_at ? new Date(f.created_at).toLocaleDateString() : ''}</div>
+              </div>
+              <span style={{ 
+                fontSize: '10px', 
+                fontWeight: '700', 
+                padding: '2px 6px', 
+                borderRadius: '4px',
+                backgroundColor: f.type === '錯誤' ? '#fee2e2' : (f.type === '場地' ? '#fef3c7' : '#e0f2fe'),
+                color: f.type === '錯誤' ? '#ef4444' : (f.type === '場地' ? '#d97706' : '#0284c7')
+              }}>
+                {f.type}
+              </span>
+            </div>
+            
+            <p style={{ margin: 0, fontSize: '14px', color: '#475569', lineHeight: '1.5', marginBottom: '12px' }}>
+              {f.content}
+            </p>
+
+            {f.is_handled && (
+              <div style={{ backgroundColor: '#f8fafc', padding: '10px', borderRadius: '8px', borderLeft: '4px solid #10b981', fontSize: '13px', color: '#475569', marginBottom: '12px' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '12px', color: '#1e293b', marginBottom: '2px' }}>管理者的回覆：</div>
+                <div style={{ whiteSpace: 'pre-wrap' }}>{f.admin_reply || '無回覆內容。'}</div>
+              </div>
+            )}
+
+            {replyingFeedbackId === f.id && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                <textarea 
+                  placeholder="請輸入給使用者的回覆內容..."
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  style={{ width: '100%', minHeight: '60px', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', resize: 'none' }}
+                />
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <button onClick={() => { setReplyingFeedbackId(null); setReplyText(''); }} style={{ padding: '4px 10px', border: '1px solid #cbd5e1', background: 'white', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}>
+                    取消
+                  </button>
+                  <button onClick={() => handleCompleteFeedback(f.id)} style={{ padding: '4px 10px', border: 'none', background: '#10b981', color: 'white', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    送出
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
+              {!f.is_handled && replyingFeedbackId !== f.id && (
+                <button style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '700' }} onClick={() => { setReplyingFeedbackId(f.id); setReplyText(''); }}>
+                  <MessageSquareText size={16} /> 回覆
+                </button>
+              )}
+              <button style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '700' }} onClick={() => handleDeleteFeedback(f.id)}>
+                <Trash2 size={16} /> 刪除
+              </button>
+            </div>
+          </div>
+        ))}
+        {feedbacks.filter(f => feedbackFilter === 'pending' ? !f.is_handled : f.is_handled).length === 0 && (
+          <div style={{ textAlign: 'center', padding: '48px 16px', color: '#94a3b8' }}>
+            {feedbackFilter === 'pending' ? '目前沒有待處理的回饋。' : '目前沒有已完成的回饋。'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderMobileUserManagement = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h2 style={{ fontSize: '20px', margin: 0, fontWeight: '800' }}>會員帳號管理</h2>
+      </div>
+
+      {userSubTab === 'list' ? (
+        <div>
+          <form onSubmit={handleUmSearchSubmit} style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <input
+                type="text"
+                placeholder="搜尋 Email、手機、姓名..."
+                value={umSearchQuery}
+                onChange={(e) => setUmSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px 8px 32px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '13px',
+                  outline: 'none',
+                }}
+              />
+            </div>
+            <button type="submit" className="btn-primary" style={{ padding: '0 16px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px' }}>
+              搜尋
+            </button>
+            {umSearchQuery && (
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => {
+                  setUmSearchQuery('');
+                  handleFetchUmUsers('');
+                }}
+                style={{ padding: '0 10px', borderRadius: '8px', margin: 0 }}
+              >
+                清除
+              </button>
+            )}
+          </form>
+
+          {umIsLoadingUsers ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
+              <div className="upload-spinner" style={{ width: '24px', height: '24px', borderWidth: '2px' }}></div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {umUsers.map((u) => {
+                const isBanned = u.is_active === false;
+                const repStatus = getReputationStatus(u.credit_point ?? 90);
+                return (
+                  <div
+                    key={u.id}
+                    onClick={() => {
+                      handleSelectUmUser(u);
+                      setUserSubTab('detail');
+                    }}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: '1px solid #e2e8f0',
+                      backgroundColor: 'white',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        {u.avatar_url ? (
+                          <SafeImage src={u.avatar_url} alt="avatar" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#e2e8f0', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#64748b' }}>
+                            <UserCircle size={20} />
+                          </div>
+                        )}
+                        {isBanned && (
+                          <div style={{ position: 'absolute', bottom: '-2px', right: '-2px', backgroundColor: '#ef4444', color: 'white', borderRadius: '50%', width: '14px', height: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1.5px solid white' }}>
+                            <ShieldBan size={8} />
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ overflow: 'hidden' }}>
+                        <div style={{ fontWeight: '700', fontSize: '14px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {u.name || `會員 #${u.id}`}
+                          {isBanned && (
+                            <span style={{ fontSize: '9px', fontWeight: '800', backgroundColor: '#fee2e2', color: '#ef4444', padding: '1px 4px', borderRadius: '3px' }}>已停權</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {u.email}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '800', color: repStatus.color }}>{u.credit_point ?? 90} 分</div>
+                      </div>
+                      <ChevronRight size={14} color="#cbd5e1" />
+                    </div>
+                  </div>
+                );
+              })}
+              {umUsers.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>
+                  找不到符合條件 of 會員。
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Detail Profile view */
+        <div>
+          <button className="admin-mobile-back-btn" onClick={() => setUserSubTab('list')}>
+            <ArrowLeft size={16} /> 返回會員列表
+          </button>
+
+          {umSelectedUser && (
+            <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {umSelectedUser.avatar_url ? (
+                    <SafeImage src={umSelectedUser.avatar_url} alt="avatar" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#94a3b8' }}>
+                      <UserCircle size={28} />
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: '16px', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {umSelectedUser.name || '未填寫'}
+                      {umSelectedUser.is_active === false && (
+                        <span style={{ fontSize: '10px', fontWeight: '800', backgroundColor: '#fee2e2', color: '#ef4444', padding: '1px 4px', borderRadius: '3px' }}>停權中</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>ID: #{umSelectedUser.id}</div>
+                  </div>
+                </div>
+                <div>
+                  {umSelectedUser.is_active === false ? (
+                    <button onClick={() => handleUnbanUser(umSelectedUser.id)} className="btn-outline" style={{ borderColor: '#10b981', color: '#10b981', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', margin: 0 }}>
+                      恢復
+                    </button>
+                  ) : (
+                    <button onClick={() => handleBanUser(umSelectedUser.id)} className="btn-outline" style={{ borderColor: '#ef4444', color: '#ef4444', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', margin: 0 }}>
+                      停權
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Profile fields */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px', fontSize: '13px' }}>
+                <div>
+                  <div style={{ color: '#94a3b8', fontSize: '11px' }}>電子信箱</div>
+                  <div style={{ fontWeight: '700', color: '#334155', wordBreak: 'break-all' }}>{umSelectedUser.email}</div>
+                </div>
+                <div>
+                  <div style={{ color: '#94a3b8', fontSize: '11px' }}>聯絡電話</div>
+                  <div style={{ fontWeight: '700', color: '#334155' }}>{umSelectedUser.phone || '未填寫'}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '20px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#94a3b8', fontSize: '11px' }}>性別</div>
+                    <div style={{ fontWeight: '700', color: '#334155' }}>{umSelectedUserDetail?.gender || '未填寫'}</div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#94a3b8', fontSize: '11px' }}>生日</div>
+                    <div style={{ fontWeight: '700', color: '#334155' }}>{umSelectedUserDetail?.birthday || '未填寫'}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '20px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#94a3b8', fontSize: '11px' }}>Line ID</div>
+                    <div style={{ fontWeight: '700', color: '#334155' }}>{umSelectedUserDetail?.line_id || '未填寫'}</div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#94a3b8', fontSize: '11px' }}>Instagram</div>
+                    <div style={{ fontWeight: '700', color: '#334155' }}>{umSelectedUserDetail?.instagram || '未填寫'}</div>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: '#94a3b8', fontSize: '11px' }}>個人簡介</div>
+                  <div style={{ color: '#475569', fontStyle: 'italic', backgroundColor: '#f8fafc', padding: '8px', borderRadius: '6px', marginTop: '4px' }}>
+                    {umSelectedUserDetail?.bio || '尚未填寫簡介。'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Edit reputation score */}
+              <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <TrendingUp size={14} /> 調整信譽積分
+                </h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>目前分數</div>
+                    <div style={{ fontSize: '20px', fontWeight: '800', color: getReputationStatus(umSelectedUser.credit_point ?? 90).color }}>
+                      {umSelectedUser.credit_point ?? 90}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={umEditScore}
+                      onChange={(e) => setUmEditScore(e.target.value)}
+                      style={{ width: '60px', padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', textAlign: 'center', fontSize: '13px', fontWeight: '800' }}
+                    />
+                    <button
+                      onClick={() => handleUpdateUmReputation(umSelectedUser.id, umEditScore)}
+                      className="btn-primary"
+                      style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px' }}
+                    >
+                      修改
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hosted/Joined matches list */}
+              <div>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#1e293b', borderBottom: '1px solid #cbd5e1', paddingBottom: '6px' }}>
+                  活動歷史紀錄
+                </h4>
+                {umLoadingDetail ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                    <div className="upload-spinner" style={{ width: '20px', height: '20px', borderWidth: '2px' }}></div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: '800', color: '#64748b', marginBottom: '6px' }}>創立的房間 ({umSelectedUserDetail?.hosted_matches?.length || 0})</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto' }}>
+                        {(umSelectedUserDetail?.hosted_matches || []).map((m) => (
+                          <div key={m.id} onClick={() => navigate(`/party/${m.id}`, { state: { fromAdmin: true } })} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #f1f5f9', backgroundColor: '#faf5ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                              <span style={{ fontSize: '10px', padding: '1px 4px', borderRadius: '3px', border: '1px solid', ...getSportBadgeStyle(m.sport_name) }}>{m.sport_name}</span>
+                              <span style={{ fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title || m.game_name}</span>
+                              <span style={{ fontSize: '10px', padding: '1px 4px', borderRadius: '3px', border: '1px solid', ...getMatchStatusStyle(m.match_status) }}>{m.status_chinese || m.match_status}</span>
+                            </div>
+                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>{m.booking_date}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: '800', color: '#64748b', marginBottom: '6px' }}>參加的房間 ({umSelectedUserDetail?.joined_matches?.length || 0})</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto' }}>
+                        {(umSelectedUserDetail?.joined_matches || []).map((m) => (
+                          <div key={m.id} onClick={() => navigate(`/party/${m.id}`, { state: { fromAdmin: true } })} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #f1f5f9', backgroundColor: '#f0fdf4', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                              <span style={{ fontSize: '10px', padding: '1px 4px', borderRadius: '3px', border: '1px solid', ...getSportBadgeStyle(m.sport_name) }}>{m.sport_name}</span>
+                              <span style={{ fontSize: '12px', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title || m.game_name}</span>
+                              <span style={{ fontSize: '10px', padding: '1px 4px', borderRadius: '3px', border: '1px solid', ...getMatchStatusStyle(m.match_status) }}>{m.status_chinese || m.match_status}</span>
+                            </div>
+                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>{m.booking_date}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderMobileDemoGames = () => (
+    <div>
+      <h2 style={{ fontSize: '20px', marginBottom: '16px', fontWeight: '800' }}>房間狀態調整</h2>
+      
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', position: 'relative', alignItems: 'center' }}>
+          <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px' }} />
+          <input 
+            type="text" 
+            placeholder="搜尋房間名稱或場地..." 
+            value={demoSearchQuery}
+            onChange={e => setDemoSearchQuery(e.target.value)}
+            style={{ 
+              width: '100%', 
+              padding: '8px 10px 8px 30px', 
+              borderRadius: '6px', 
+              border: '1px solid #cbd5e1', 
+              fontSize: '13px', 
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {['全部', ...sportsList.map(sport => sport.name).filter(Boolean)].map(sport => (
+            <button
+              key={sport}
+              onClick={() => setDemoSportFilter(sport)}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '15px',
+                fontSize: '10px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                border: '1px solid',
+                backgroundColor: demoSportFilter === sport ? '#7995a5' : '#f1f5f9',
+                color: demoSportFilter === sport ? 'white' : '#475569',
+                borderColor: demoSportFilter === sport ? '#7995a5' : '#e2e8f0',
+              }}
+            >
+              {sport}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {parties
+          .filter(p => {
+            const matchesSport = demoSportFilter === '全部' || p.sportName === demoSportFilter;
+            const matchesSearch = p.title.toLowerCase().includes(demoSearchQuery.toLowerCase()) || 
+                                  p.location.toLowerCase().includes(demoSearchQuery.toLowerCase());
+            return matchesSport && matchesSearch;
+          })
+          .map(p => {
+            const badgeStyle = getSportBadgeStyle(p.sportName);
+            return (
+              <div 
+                key={p.id} 
+                style={{ 
+                  padding: '14px', 
+                  backgroundColor: '#ffffff', 
+                  borderRadius: '10px', 
+                  border: '1px solid #e2e8f0',
+                  borderLeft: `4px solid ${badgeStyle.borderColor || '#cbd5e1'}`,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px', gap: '6px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '14px', color: '#1e293b' }}>{p.title}</div>
+                  <span style={{ padding: '1px 6px', borderRadius: '3px', fontSize: '9px', fontWeight: '700', border: '1px solid', ...badgeStyle }}>
+                    {p.sportName}
+                  </span>
+                </div>
+                
+                <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div>📍 {p.location}</div>
+                  <div>
+                    狀態：
+                    <span style={{ 
+                      fontWeight: '800', 
+                      color: p.status === '已結束' ? '#ef4444' : p.status === '已開始' ? '#10b981' : '#f59e0b',
+                      backgroundColor: p.status === '已結束' ? '#fef2f2' : p.status === '已開始' ? '#f0fdf4' : '#fffbeb',
+                      padding: '1px 4px',
+                      borderRadius: '3px',
+                    }}>
+                      {p.status}
+                    </span>
+                    <span style={{ marginLeft: '4px' }}>({p.time})</span>
+                  </div>
+
+                  {editingGameTimeId === p.id && (
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap', backgroundColor: '#f8fafc', padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <input type="date" value={editGameDate} onChange={e => setEditGameDate(e.target.value)} style={{ padding: '2px 4px', fontSize: '10px' }} />
+                      <input type="text" value={editGameTimeSlot} onChange={e => setEditGameTimeSlot(e.target.value)} style={{ padding: '2px 4px', fontSize: '10px', width: '80px' }} />
+                      <button onClick={() => handleUpdateGameTime(p.id)} style={{ padding: '2px 6px', backgroundColor: '#7995a5', color: 'white', border: 'none', borderRadius: '3px', fontSize: '10px', fontWeight: 'bold' }}>儲存</button>
+                      <button onClick={() => setEditingGameTimeId(null)} style={{ padding: '2px 6px', backgroundColor: 'white', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '3px', fontSize: '10px' }}>取消</button>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                  <button className="btn-outline" style={{ fontSize: '10px', padding: '4px 6px', flex: 1 }} onClick={() => handleUpdatePartyStatus(p.id, '即將開始', '10 分鐘後')}>招募中</button>
+                  <button className="btn-outline" style={{ fontSize: '10px', padding: '4px 6px', flex: 1 }} onClick={() => handleUpdatePartyStatus(p.id, '已開始', '進行中')}>已開始</button>
+                  <button className="btn-outline" style={{ fontSize: '10px', padding: '4px 6px', flex: 1 }} onClick={() => handleUpdatePartyStatus(p.id, '已結束', '昨天')}>已結束</button>
+                  <button className="btn-outline" style={{ fontSize: '10px', padding: '4px 6px', flex: 1 }} onClick={() => handleUpdatePartyStatus(p.id, '招募中', '今日 20:00')}>還原</button>
+                  <button className="btn-outline" style={{ fontSize: '10px', padding: '4px 6px', flex: '1 1 100%', marginTop: '4px' }} onClick={() => handleSetTimeBefore30Min(p.id)}>B4 30MIN (前推30分鐘)</button>
+                </div>
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="admin-container" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: '#f8fafc', paddingBottom: '60px' }}>
+      <header style={{ backgroundColor: '#1e293b', color: 'white', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 100 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => navigate('/home')}>
+          <span style={{ fontSize: '18px', fontWeight: '800' }}>不倒翁 - 管理後台</span>
+        </div>
+        <button 
+          onClick={() => navigate('/home')}
+          style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+        >
+          <ArrowLeft size={16} /> 退出
+        </button>
+      </header>
+
+      <main style={{ flex: 1, padding: '16px', overflowY: 'auto', paddingBottom: '80px' }}>
+        {activeTab === 'dashboard' && renderMobileDashboard()}
+        {activeTab === 'venues' && renderMobileVenues()}
+        {activeTab === 'announcements' && renderMobileAnnouncements()}
+        {activeTab === 'feedbacks' && renderMobileFeedbacks()}
+        {activeTab === 'user_management' && renderMobileUserManagement()}
+        {activeTab === 'demo_games' && renderMobileDemoGames()}
       </main>
+
+      <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '60px', backgroundColor: 'white', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-around', alignItems: 'center', zIndex: 100 }}>
+        <button onClick={() => setActiveTab('dashboard')} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: activeTab === 'dashboard' ? '#0284c7' : '#64748b' }}>
+          <LayoutDashboard size={20} />
+          <span style={{ fontSize: '10px' }}>分析</span>
+        </button>
+        <button onClick={() => setActiveTab('venues')} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: activeTab === 'venues' ? '#0284c7' : '#64748b' }}>
+          <MapPinned size={20} />
+          <span style={{ fontSize: '10px' }}>場地</span>
+        </button>
+        <button onClick={() => setActiveTab('announcements')} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: activeTab === 'announcements' ? '#0284c7' : '#64748b' }}>
+          <Bell size={20} />
+          <span style={{ fontSize: '10px' }}>公告</span>
+        </button>
+        <button onClick={() => setActiveTab('feedbacks')} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: activeTab === 'feedbacks' ? '#0284c7' : '#64748b' }}>
+          <MessageSquareText size={20} />
+          <span style={{ fontSize: '10px' }}>回饋</span>
+        </button>
+        <button onClick={() => setActiveTab('user_management')} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: activeTab === 'user_management' ? '#0284c7' : '#64748b' }}>
+          <Users size={20} />
+          <span style={{ fontSize: '10px' }}>會員</span>
+        </button>
+        <button onClick={() => setActiveTab('demo_games')} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: activeTab === 'demo_games' ? '#0284c7' : '#64748b' }}>
+          <Wrench size={20} />
+          <span style={{ fontSize: '10px' }}>工具</span>
+        </button>
+      </nav>
+
+      {/* 編輯系統公告 Modal (Mobile) */}
+      {editingAnnouncement && (
+        <div className="modal-overlay" onClick={() => setEditingAnnouncement(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '90%', width: '400px' }}>
+            <div className="modal-header">
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Pencil size={20} /> 編輯系統公告
+              </h3>
+              <button className="modal-close" onClick={() => setEditingAnnouncement(null)}>×</button>
+            </div>
+            <form onSubmit={handleEditAnnouncementSubmit} style={{ marginTop: '20px' }}>
+              <div className="form-group">
+                <label className="form-label">公告標題</label>
+                <input 
+                  required 
+                  type="text" 
+                  className="form-input" 
+                  value={editingAnnouncement.title} 
+                  onChange={e => setEditingAnnouncement({ ...editingAnnouncement, title: e.target.value })} 
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">內容</label>
+                <textarea 
+                  required 
+                  className="form-input" 
+                  rows="4" 
+                  value={editingAnnouncement.content} 
+                  onChange={e => setEditingAnnouncement({ ...editingAnnouncement, content: e.target.value })}
+                  style={{ resize: 'none' }}
+                ></textarea>
+              </div>
+              <div className="form-group">
+                <label className="form-label">公告圖片 (最多 3 張，可從裝置上傳)</label>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
+                  {editFiles.map((item) => (
+                    <div key={item.id} style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                      <SafeImage 
+                        src={item.type === 'existing' ? item.url : item.previewUrl} 
+                        alt="upload-preview" 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditFiles(editFiles.filter(f => f.id !== item.id));
+                        }}
+                        style={{ position: 'absolute', top: '2px', right: '2px', backgroundColor: 'rgba(239, 68, 68, 0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', fontSize: '12px', padding: 0 }}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+                  
+                  {editFiles.length < 3 && (
+                    <label style={{ width: '80px', height: '80px', border: '2px dashed #cbd5e1', borderRadius: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: '#64748b' }}>
+                      <Plus size={20} />
+                      <span style={{ fontSize: '11px', marginTop: '4px' }}>選擇檔案</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (editFiles.length >= 3) {
+                            alert('最多只能選擇 3 張圖片。');
+                            return;
+                          }
+                          const previewUrl = URL.createObjectURL(file);
+                          setEditFiles(prev => [...prev, {
+                            id: Date.now().toString(),
+                            type: 'new',
+                            file,
+                            previewUrl
+                          }]);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '28px' }}>
+                <button type="button" className="btn-outline" style={{ flex: 1, padding: '12px', borderRadius: '12px' }} onClick={() => setEditingAnnouncement(null)}>取消</button>
+                <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', borderRadius: '12px' }}>儲存修改</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Court Manager Modal (Mobile) */}
+      {selectedVenueForCourts && (
+        <div className="modal-overlay" onClick={() => setSelectedVenueForCourts(null)} style={{ zIndex: 1500 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ width: '90%', maxWidth: '500px', display: 'flex', flexDirection: 'column', maxHeight: '90vh', padding: '20px' }}>
+            <div className="modal-header" style={{ paddingBottom: '12px', borderBottom: '1px solid #e2e8f0', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Wrench size={18} color="#0ea5e9" /> {selectedVenueForCourts.name} - 球場管理
+              </h3>
+              <button className="modal-close" style={{ fontSize: '24px' }} onClick={() => setSelectedVenueForCourts(null)}>×</button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', flex: 1 }}>
+              {/* Add/Edit Court Form on Mobile */}
+              <div style={{ padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#f8fafc' }}>
+                <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: '#1e293b' }}>
+                  {editingCourt ? '📝 編輯球場資訊' : '➕ 新增個別球場'}
+                </h4>
+                <form onSubmit={handleCourtFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label className="form-label" style={{ marginBottom: '6px', fontSize: '13px', fontWeight: '700' }}>支援運動種類 (可多選)</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', padding: '8px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: 'white' }}>
+                      {sportsList.map(sport => {
+                        const sportId = Number(sport.id);
+                        const isChecked = newCourt.sports.includes(sportId);
+                        return (
+                          <label key={sport.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', userSelect: 'none', color: '#334155' }}>
+                            <input 
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setNewCourt(prev => ({ ...prev, sports: [...prev.sports, sportId] }));
+                                } else {
+                                  setNewCourt(prev => ({ ...prev, sports: prev.sports.filter(id => id !== sportId) }));
+                                }
+                              }}
+                              style={{ width: '14px', height: '14px', accentColor: '#0ea5e9' }}
+                            />
+                            {sport.name}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                    <label className="form-label" style={{ fontSize: '13px', fontWeight: '700' }}>每小時單價 (NT$)</label>
+                    <input 
+                      required
+                      type="number" 
+                      min="0"
+                      className="form-input" 
+                      style={{ padding: '8px 12px', fontSize: '14px' }}
+                      placeholder="例如：300"
+                      value={newCourt.base_price}
+                      onChange={e => setNewCourt({ ...newCourt, base_price: parseInt(e.target.value, 10) || 0 })}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <input 
+                      type="checkbox" 
+                      id="court-occupied-checkbox-mobile"
+                      checked={newCourt.occupied}
+                      onChange={e => setNewCourt({ ...newCourt, occupied: e.target.checked })}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#0ea5e9' }}
+                    />
+                    <label htmlFor="court-occupied-checkbox-mobile" className="form-label" style={{ margin: 0, fontSize: '13px', cursor: 'pointer', userSelect: 'none', fontWeight: '700' }}>
+                      設定使用中 (不開放預訂)
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button 
+                      type="submit" 
+                      disabled={isSavingCourt}
+                      className="btn-primary" 
+                      style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', border: 'none', cursor: 'pointer', backgroundColor: '#0ea5e9', color: 'white' }}
+                    >
+                      {isSavingCourt ? '儲存中...' : (editingCourt ? '儲存修改' : '確認新增')}
+                    </button>
+                    {editingCourt && (
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setEditingCourt(null);
+                          setNewCourt({ sports: [], base_price: 300, occupied: false });
+                        }}
+                        className="btn-outline" 
+                        style={{ flex: 1, padding: '10px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', margin: 0 }}
+                      >
+                        取消
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </div>
+
+              {/* Court List on Mobile */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <h4 style={{ margin: 0, fontSize: '14px', color: '#1e293b', fontWeight: '700' }}>現有球場列表 ({venueCourts.length})</h4>
+                {isCourtsLoading ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
+                    <div className="upload-spinner" style={{ margin: '0 auto 8px', width: '20px', height: '20px' }}></div>
+                    載入中...
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '40vh', overflowY: 'auto' }}>
+                    {venueCourts.map((court, idx) => (
+                      <div key={court.id} style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: '800', fontSize: '14px', color: '#1e293b' }}>
+                            球場 #{idx + 1}
+                          </span>
+                          <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '8px', fontWeight: 'bold', backgroundColor: court.occupied ? '#fee2e2' : '#dcfce7', color: court.occupied ? '#ef4444' : '#22c55e' }}>
+                            {court.occupied ? '使用中' : '空閒'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
+                              {court.sport_names && court.sport_names.length > 0 ? (
+                                court.sport_names.map((name, i) => {
+                                  const badge = getSportBadgeStyle(name);
+                                  return (
+                                    <span key={i} style={{ fontSize: '10px', padding: '1px 4px', borderRadius: '4px', border: '1px solid', ...badge }}>{name}</span>
+                                  );
+                                })
+                              ) : (
+                                <span style={{ color: '#94a3b8', fontSize: '10px' }}>無指定運動</span>
+                              )}
+                            </div>
+                            <span style={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}>
+                              NT$ {court.base_price} / 小時
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button 
+                              onClick={() => handleStartEditCourt(court)}
+                              style={{ padding: '4px 8px', fontSize: '12px', fontWeight: 'bold', backgroundColor: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                            >
+                              編輯
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteCourt(court.id)}
+                              style={{ padding: '4px 8px', fontSize: '12px', fontWeight: 'bold', backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                            >
+                              刪除
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {venueCourts.length === 0 && (
+                      <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', border: '2px dashed #e2e8f0', borderRadius: '10px', fontSize: '12px' }}>
+                        此場館目前沒有設定任何球場，請在上方新增。
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default Admin;
+
