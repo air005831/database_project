@@ -25,7 +25,7 @@ from .serializers import (
     PenaltyRuleSerializer, ReportSerializer,
     BlacklistSerializer, NotificationSerializer, GameBulletinSerializer,
     FeedbackSerializer, AnnouncementSerializer, TaiwanRegionSerializer,
-    UserAdminDetailSerializer
+    UserAdminDetailSerializer, FacilitySerializer
 )
 
 User = get_user_model()
@@ -406,12 +406,12 @@ class VenueViewSet(viewsets.ModelViewSet):
         # 篩選縣市 (外鍵 address 下的 city)
         city = self.request.query_params.get('city')
         if city and city.strip() and city not in ['null', 'undefined']:
-            queryset = queryset.filter(address__city=city)
+            queryset = queryset.filter(address__zipcode__city=city)
             
         # 篩選區域 (外鍵 address 下 the district)
         district = self.request.query_params.get('district')
         if district and district.strip() and district not in ['null', 'undefined']:
-            queryset = queryset.filter(address__district__icontains=district)
+            queryset = queryset.filter(address__zipcode__district__icontains=district)
             
         # 篩選運動類型 (該場館底下有任一球場支援該運動)
         sport_id = self.request.query_params.get('sport_id')
@@ -425,9 +425,9 @@ class VenueViewSet(viewsets.ModelViewSet):
         city = self.request.query_params.get('city')
         district = self.request.query_params.get('district')
         if city:
-            queryset = queryset.filter(address__city__icontains=city)
+            queryset = queryset.filter(address__zipcode__city__icontains=city)
         if district:
-            queryset = queryset.filter(address__district__icontains=district)
+            queryset = queryset.filter(address__zipcode__district__icontains=district)
         return queryset
 
     def get_permissions(self):
@@ -441,11 +441,18 @@ class VenueViewSet(viewsets.ModelViewSet):
         district = request.data.get('district')
         street_line = request.data.get('street_line', '未指定路段')
         facilities_list = request.data.get('facilities', [])
+        opening_hours = request.data.get('opening_hours')
+        zipcode = request.data.get('zipcode')
         
-        # 1. Create or get Address
+        # 1. Resolve TaiwanRegion & Create Address
+        region = None
+        if zipcode:
+            region = TaiwanRegion.objects.filter(zipcode=str(zipcode)).first()
+        if not region and city and district:
+            region = TaiwanRegion.objects.filter(city=city, district=district).first()
+            
         address, _ = Address.objects.get_or_create(
-            city=city,
-            district=district,
+            zipcode=region,
             street_line=street_line
         )
         
@@ -453,16 +460,23 @@ class VenueViewSet(viewsets.ModelViewSet):
         venue = Venue.objects.create(
             name=name,
             address=address,
-            types='indoor'
+            opening_hours=opening_hours
         )
         
-        # 3. Handle Facilities
+        # 3. Handle Facilities (Support IDs and string names)
         if isinstance(facilities_list, str):
             facilities_list = [f.strip() for f in facilities_list.split(',') if f.strip()]
-        
-        for f_name in facilities_list:
-            facility, _ = Facility.objects.get_or_create(name=f_name)
-            venue.facilities.add(facility)
+            
+        for f_item in facilities_list:
+            if isinstance(f_item, int) or (isinstance(f_item, str) and str(f_item).isdigit()):
+                try:
+                    facility = Facility.objects.get(id=int(f_item))
+                    venue.facilities.add(facility)
+                except Facility.DoesNotExist:
+                    pass
+            else:
+                facility, _ = Facility.objects.get_or_create(name=str(f_item).strip())
+                venue.facilities.add(facility)
             
         # 4. Handle Court Creation (Bulk court_counts or legacy sport_id & court_count)
         court_counts = request.data.get('court_counts', None)
@@ -829,7 +843,7 @@ class GameMatchViewSet(viewsets.ModelViewSet):
         if target_level:
             queryset = queryset.filter(target_level=target_level)
         if city:
-            queryset = queryset.filter(court__venue__address__city__contains=city)
+            queryset = queryset.filter(court__venue__address__zipcode__city__contains=city)
         if date:
             queryset = queryset.filter(booking_date=date)
         if time_slot:
@@ -890,10 +904,6 @@ class GameMatchViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         
-        lat = request.query_params.get('lat')
-        lng = request.query_params.get('lng')
-        radius = request.query_params.get('radius') # in km
-
         matches_list = []
         for match in queryset:
             # 1. Weather calculation
@@ -907,8 +917,6 @@ class GameMatchViewSet(viewsets.ModelViewSet):
             # playability index formula: (5 * rain_probability) + (aqi / 50.0)
             weather_idx = (5 * float(rain_prob)) + (float(aqi) / 50.0)
             match.weather = round(weather_idx, 1)
-            
-            match.distance_km = None
             
             matches_list.append(match)
 
@@ -2372,4 +2380,9 @@ def upload_image(request):
 class TaiwanRegionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = TaiwanRegion.objects.all().order_by('city', 'district')
     serializer_class = TaiwanRegionSerializer
+    permission_classes = [permissions.AllowAny]
+
+class FacilityViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Facility.objects.all().order_by('id')
+    serializer_class = FacilitySerializer
     permission_classes = [permissions.AllowAny]

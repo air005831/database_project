@@ -78,7 +78,7 @@ function Admin() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-  const [venueSubTab, setVenueSubTab] = useState('list');
+
   const [announcementSubTab, setAnnouncementSubTab] = useState('list');
   const [userSubTab, setUserSubTab] = useState('list');
 
@@ -103,14 +103,26 @@ function Admin() {
     city: '桃園市', 
     district: '桃園區', 
     street_line: '', 
-    facilities: [], 
-    weekdays_hours: '08:00-22:00', 
-    weekends_hours: '08:00-22:00',
-    closed_days: []
+    facilities: []
   });
+  const [regionsList, setRegionsList] = useState([]);
   const [regionsMap, setRegionsMap] = useState({});
   const citiesToUse = Object.keys(regionsMap).length > 0 ? regionsMap : TAIWAN_CITIES_DISTRICTS;
   const [courtCounts, setCourtCounts] = useState([{ sport_id: '', count: 1 }]);
+  const [isVenueModalOpen, setIsVenueModalOpen] = useState(false);
+  const [venuePage, setVenuePage] = useState(1);
+  const [venueSearchQuery, setVenueSearchQuery] = useState('');
+  const [facilitiesList, setFacilitiesList] = useState([]);
+  const [openingHoursType, setOpeningHoursType] = useState('same');
+  const [sameStart, setSameStart] = useState('08:00');
+  const [sameEnd, setSameEnd] = useState('22:00');
+  const [weekdayStart, setWeekdayStart] = useState('08:00');
+  const [weekdayEnd, setWeekdayEnd] = useState('22:00');
+  const [weekendStart, setWeekendStart] = useState('08:00');
+  const [weekendEnd, setWeekendEnd] = useState('22:00');
+  const [regularOff, setRegularOff] = useState([]);
+  const [specialOff, setSpecialOff] = useState([]);
+  const [tempSpecialOffDate, setTempSpecialOffDate] = useState('');
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', photo: [] });
   const [editingAnnouncement, setEditingAnnouncement] = useState(null);
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -180,6 +192,7 @@ function Admin() {
       try {
         const data = await venuesApi.getRegions();
         if (Array.isArray(data)) {
+          setRegionsList(data);
           const map = {};
           data.forEach(item => {
             if (!map[item.city]) {
@@ -191,7 +204,7 @@ function Admin() {
           });
           setRegionsMap(map);
 
-          // 重新設定預設的縣市和區域，確保在資料庫中存在
+          // 重新設定預設的縣市 and 區域，確保在資料庫中存在
           const cities = Object.keys(map);
           if (cities.length > 0) {
             setNewVenue(prev => {
@@ -209,18 +222,64 @@ function Admin() {
     fetchRegions();
   }, []);
 
-  // 動態衍生篩選選單選項
-  const cityOptions = Object.keys(citiesToUse).length > 0 
-    ? Object.keys(citiesToUse) 
-    : [...new Set(allVenuesForFiltering.map(v => v.city).filter(Boolean))];
+  // 載入真實設施清單
+  useEffect(() => {
+    const fetchFacilities = async () => {
+      try {
+        const data = await venuesApi.getFacilities();
+        setFacilitiesList(data || []);
+      } catch (error) {
+        console.error('Fetch facilities error:', error);
+      }
+    };
+    fetchFacilities();
+  }, []);
+
+  // 動態衍生篩選選單選項 (與新增/編輯場地 Modal 統一共用 citiesToUse 映射表)
+  const cityOptions = Object.keys(citiesToUse);
   const districtOptions = filterCity
     ? (citiesToUse[filterCity] || [])
     : [];
 
   const hasActiveFilter = !!(filterCity || filterDistrict || filterSport);
 
+  // 場地列表分頁計算
+  const VENUES_PER_PAGE = 10;
+  const totalVenuePages = Math.ceil(venues.length / VENUES_PER_PAGE) || 1;
+  const paginatedVenues = venues.slice((venuePage - 1) * VENUES_PER_PAGE, venuePage * VENUES_PER_PAGE);
+
+  const renderVenuePagination = (totalPageCount) => {
+    if (totalPageCount <= 1) return null;
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '24px', padding: '10px 0' }}>
+        <button 
+          type="button"
+          className="btn-outline" 
+          disabled={venuePage === 1} 
+          onClick={() => setVenuePage(prev => Math.max(1, prev - 1))}
+          style={{ padding: '6px 16px', margin: 0, opacity: venuePage === 1 ? 0.5 : 1, cursor: venuePage === 1 ? 'not-allowed' : 'pointer' }}
+        >
+          上一頁
+        </button>
+        <span style={{ fontSize: '14px', fontWeight: '700', color: '#475569' }}>
+          第 {venuePage} / {totalPageCount} 頁
+        </span>
+        <button 
+          type="button"
+          className="btn-outline" 
+          disabled={venuePage === totalPageCount} 
+          onClick={() => setVenuePage(prev => Math.min(totalPageCount, prev + 1))}
+          style={{ padding: '6px 16px', margin: 0, opacity: venuePage === totalPageCount ? 0.5 : 1, cursor: venuePage === totalPageCount ? 'not-allowed' : 'pointer' }}
+        >
+          下一頁
+        </button>
+      </div>
+    );
+  };
+
   // 載入真實場地資料，當篩選條件（縣市/區域/球類）改變時重新向後端抓取
   useEffect(() => {
+    setVenuePage(1);
     const fetchVenues = async () => {
       try {
         const params = {};
@@ -233,9 +292,9 @@ function Admin() {
         let mappedVenues = rawVenues.map(v => ({
           id: v.id,
           name: v.name,
-          city: v.address_detail?.city || '',
-          district: v.address_detail?.district || '',
-          address: v.address_detail?.street_line || '',
+          city: v.city || v.address_detail?.city || '',
+          district: v.district || v.address_detail?.district || '',
+          address: v.street_line || v.address_detail?.street_line || '',
           facilities: v.facilities || [],
           opening_hours: v.opening_hours || null,
           court_count: v.court_count || 0,
@@ -261,6 +320,11 @@ function Admin() {
             (v.sport_ids || []).includes(Number(filterSport))
           );
         }
+        if (venueSearchQuery) {
+          mappedVenues = mappedVenues.filter(v =>
+            v.name.toLowerCase().includes(venueSearchQuery.toLowerCase())
+          );
+        }
 
         setVenues(mappedVenues);
       } catch (error) {
@@ -268,7 +332,7 @@ function Admin() {
       }
     };
     fetchVenues();
-  }, [filterCity, filterDistrict, filterSport, sportsList]);
+  }, [filterCity, filterDistrict, filterSport, sportsList, venueSearchQuery]);
 
   // 載入後台資料 (採獨立 try-catch，防止單一 API 壞掉導致整頁空白)
   useEffect(() => {
@@ -576,38 +640,293 @@ function Admin() {
     return { label: '狀態良好', color: '#10b981' };
   };
 
-  const handleStartEdit = (venue) => {
-    setEditingVenueId(venue.id);
-    const firstSportName = venue.sports?.[0];
-    const sportObj = sportsList.find(s => s.name === firstSportName);
-    setNewVenue({
-      name: venue.name,
-      city: venue.city,
-      district: venue.district,
-      street_line: venue.address,
-      sport_id: sportObj ? String(sportObj.id) : '',
-      court_count: venue.court_count || 1,
-      facilities: venue.facilities || [],
-      weekdays_hours: venue.opening_hours?.weekdays || '08:00-22:00',
-      weekends_hours: venue.opening_hours?.weekends || '08:00-22:00',
-      closed_days: venue.opening_hours?.closed_days || []
-    });
-    document.getElementById('add-venue-form')?.scrollIntoView({ behavior: 'smooth' });
+  const handleStartAddNewVenue = () => {
+    try {
+      console.log('handleStartAddNewVenue triggered');
+      setEditingVenueId(null);
+      setNewVenue({
+        name: '',
+        city: Object.keys(citiesToUse)[0] || '桃園市',
+        district: (citiesToUse[Object.keys(citiesToUse)[0]] || [])[0] || '桃園區',
+        street_line: '',
+        facilities: []
+      });
+      setCourtCounts([{ sport_id: '', count: 1 }]);
+      setOpeningHoursType('same');
+      setSameStart('08:00');
+      setSameEnd('22:00');
+      setWeekdayStart('08:00');
+      setWeekdayEnd('22:00');
+      setWeekendStart('08:00');
+      setWeekendEnd('22:00');
+      setRegularOff([]);
+      setSpecialOff([]);
+      setIsVenueModalOpen(true);
+      console.log('isVenueModalOpen set to true successfully');
+    } catch (error) {
+      console.error('Error in handleStartAddNewVenue:', error);
+      alert('開啟新增場地視窗出錯: ' + error.message + '\n' + error.stack);
+    }
   };
 
-  const handleCancelEdit = () => {
+  const parseVenueOpeningHoursForEdit = (openingHours) => {
+    let type = 'same';
+    let sStart = '08:00';
+    let sEnd = '22:00';
+    let wdStart = '08:00';
+    let wdEnd = '22:00';
+    let weStart = '08:00';
+    let weEnd = '22:00';
+    let regOff = [];
+    let specOff = [];
+
+    if (openingHours) {
+      const hasNewFormat = ('all' in openingHours) || ('weekday' in openingHours) || ('weekend' in openingHours) || ('regular_off' in openingHours) || ('special_off' in openingHours);
+      
+      if (hasNewFormat) {
+        regOff = openingHours.regular_off || [];
+        specOff = openingHours.special_off || [];
+
+        if (openingHours.all && openingHours.all.length >= 2) {
+          const start = openingHours.all[0];
+          const end = openingHours.all[1];
+          if (start === '00:00' && (end === '24:00' || end === '00:00')) {
+            type = '24h';
+          } else {
+            type = 'same';
+            sStart = start;
+            sEnd = end;
+            wdStart = start;
+            wdEnd = end;
+            weStart = start;
+            weEnd = end;
+          }
+        } else if ((openingHours.weekday && openingHours.weekday.length >= 2) || (openingHours.weekend && openingHours.weekend.length >= 2)) {
+          type = 'separate';
+          if (openingHours.weekday && openingHours.weekday.length >= 2) {
+            wdStart = openingHours.weekday[0];
+            wdEnd = openingHours.weekday[1];
+          }
+          if (openingHours.weekend && openingHours.weekend.length >= 2) {
+            weStart = openingHours.weekend[0];
+            weEnd = openingHours.weekend[1];
+          }
+        }
+      } else {
+        const closedDaysMap = {
+          '週一': 1, '週二': 2, '週三': 3, '週四': 4, '週五': 5, '週六': 6, '週日': 7,
+          '星期一': 1, '星期二': 2, '星期三': 3, '星期四': 4, '星期五': 5, '星期六': 6, '星期日': 7
+        };
+        regOff = (openingHours.closed_days || []).map(day => closedDaysMap[day]).filter(Boolean);
+
+        const parseOldHours = (str) => {
+          if (!str) return ['08:00', '22:00'];
+          const match = str.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
+          if (match) {
+            return [match[1], match[2]];
+          }
+          return ['08:00', '22:00'];
+        };
+
+        const [wdS, wdE] = parseOldHours(openingHours.weekdays);
+        const [weS, weE] = parseOldHours(openingHours.weekends);
+
+        wdStart = wdS;
+        wdEnd = wdE;
+        weStart = weS;
+        weEnd = weE;
+
+        if (wdStart === weStart && wdEnd === weEnd) {
+          type = 'same';
+          sStart = wdStart;
+          sEnd = wdEnd;
+        } else {
+          type = 'separate';
+        }
+      }
+    }
+
+    setOpeningHoursType(type);
+    setSameStart(sStart);
+    setSameEnd(sEnd);
+    setWeekdayStart(wdStart);
+    setWeekdayEnd(wdEnd);
+    setWeekendStart(weStart);
+    setWeekendEnd(weEnd);
+    setRegularOff(regOff);
+    setSpecialOff(specOff);
+  };
+
+  const handleStartEdit = async (venue) => {
+    setEditingVenueId(venue.id);
+    
+    // Find facilities IDs from names
+    const facilityIds = (venue.facilities || []).map(name => {
+      const found = facilitiesList.find(f => f.name === name);
+      return found ? found.id : null;
+    }).filter(Boolean);
+
+    setNewVenue({
+      name: venue.name,
+      city: venue.city || '桃園市',
+      district: venue.district || '桃園區',
+      street_line: venue.address || '',
+      facilities: facilityIds
+    });
+
+    parseVenueOpeningHoursForEdit(venue.opening_hours);
+
+    // Load courts of this venue to count per sport
+    try {
+      const response = await venuesApi.getCourts();
+      const rawCourts = Array.isArray(response) ? response : (response.results || []);
+      const filtered = rawCourts.filter(c => c.venue === venue.id);
+      
+      const countsMap = {};
+      filtered.forEach(court => {
+        const sIds = court.sport_ids || [];
+        sIds.forEach(sid => {
+          countsMap[sid] = (countsMap[sid] || 0) + 1;
+        });
+      });
+      
+      const countsArray = Object.keys(countsMap).map(sid => ({
+        sport_id: String(sid),
+        count: countsMap[sid]
+      }));
+      
+      if (countsArray.length > 0) {
+        setCourtCounts(countsArray);
+      } else {
+        setCourtCounts([{ sport_id: '', count: 1 }]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch venue courts for edit:', error);
+      setCourtCounts([{ sport_id: '', count: 1 }]);
+    }
+
+    setIsVenueModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsVenueModalOpen(false);
     setEditingVenueId(null);
     setNewVenue({ 
       name: '', 
-      city: '桃園市', 
-      district: '桃園區', 
+      city: Object.keys(citiesToUse)[0] || '桃園市', 
+      district: (citiesToUse[Object.keys(citiesToUse)[0]] || [])[0] || '桃園區', 
       street_line: '', 
-      facilities: [],
-      weekdays_hours: '08:00-22:00',
-      weekends_hours: '08:00-22:00',
-      closed_days: []
+      facilities: []
     });
     setCourtCounts([{ sport_id: '', count: 1 }]);
+    setOpeningHoursType('same');
+    setSameStart('08:00');
+    setSameEnd('22:00');
+    setWeekdayStart('08:00');
+    setWeekdayEnd('22:00');
+    setWeekendStart('08:00');
+    setWeekendEnd('22:00');
+    setRegularOff([]);
+    setSpecialOff([]);
+  };
+
+  const handleSportChange = (idx, value) => {
+    if (!value) {
+      const updated = [...courtCounts];
+      updated[idx].sport_id = '';
+      setCourtCounts(updated);
+      return;
+    }
+
+    const selectedSport = sportsList.find(s => String(s.id) === String(value));
+    if (!selectedSport) return;
+
+    const isMahjong = selectedSport.name === '麻將';
+
+    if (isMahjong) {
+      const hasOtherSports = courtCounts.some((item, i) => i !== idx && item.sport_id && sportsList.find(s => String(s.id) === String(item.sport_id))?.name !== '麻將');
+      if (hasOtherSports) {
+        alert('麻將與球類運動互斥，無法同時在一個場館選擇！');
+        return;
+      }
+      const hasMahjongAlready = courtCounts.some((item, i) => i !== idx && item.sport_id && sportsList.find(s => String(s.id) === String(item.sport_id))?.name === '麻將');
+      if (hasMahjongAlready) {
+        alert('已選擇了麻將項目，請勿重複選擇！');
+        return;
+      }
+    } else {
+      const hasMahjong = courtCounts.some((item, i) => i !== idx && item.sport_id && sportsList.find(s => String(s.id) === String(item.sport_id))?.name === '麻將');
+      if (hasMahjong) {
+        alert('該場館已包含麻將項目，無法新增球類運動！');
+        return;
+      }
+      
+      const isDuplicate = courtCounts.some((item, i) => i !== idx && String(item.sport_id) === String(value));
+      if (isDuplicate) {
+        alert('請勿選擇重複的運動種類！');
+        return;
+      }
+    }
+
+    const updated = [...courtCounts];
+    updated[idx].sport_id = value;
+    setCourtCounts(updated);
+  };
+
+  const handleAddNewSportRow = () => {
+    const hasMahjong = courtCounts.some(item => item.sport_id && sportsList.find(s => String(s.id) === String(item.sport_id))?.name === '麻將');
+    if (hasMahjong) {
+      alert('已設定麻將項目，無法新增其他球類項目！');
+      return;
+    }
+    setCourtCounts([...courtCounts, { sport_id: '', count: 1 }]);
+  };
+
+  const formatOpeningHours = (hours) => {
+    if (!hours) return '無營業時間資訊';
+    
+    const hasNewFormat = ('all' in hours) || ('weekday' in hours) || ('weekend' in hours) || ('regular_off' in hours) || ('special_off' in hours);
+    
+    if (hasNewFormat) {
+      let timeStr = '';
+      if (hours.all && hours.all.length >= 2) {
+        if (hours.all[0] === '00:00' && (hours.all[1] === '24:00' || hours.all[1] === '00:00')) {
+          timeStr = '24小時營業';
+        } else {
+          timeStr = `每日: ${hours.all[0]}-${hours.all[1]}`;
+        }
+      } else {
+        const parts = [];
+        if (hours.weekday && hours.weekday.length >= 2) {
+          parts.push(`平日: ${hours.weekday[0]}-${hours.weekday[1]}`);
+        }
+        if (hours.weekend && hours.weekend.length >= 2) {
+          parts.push(`假日: ${hours.weekend[0]}-${hours.weekend[1]}`);
+        }
+        timeStr = parts.join(' | ') || '未設定營業時段';
+      }
+      
+      const dayLabels = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
+      let offStr = '';
+      if (hours.regular_off && hours.regular_off.length > 0) {
+        const sortedDays = [...hours.regular_off].sort((a, b) => a - b);
+        const dayNames = sortedDays.map(d => dayLabels[d - 1]);
+        offStr += ` (${dayNames.join('、')}公休)`;
+      }
+      
+      if (hours.special_off && hours.special_off.length > 0) {
+        offStr += ` [特殊休假: ${hours.special_off.join(', ')}]`;
+      }
+      
+      return `🕒 ${timeStr}${offStr}`;
+    } else {
+      let timeStr = `平日: ${hours.weekdays || '無'} | 假日: ${hours.weekends || '無'}`;
+      let offStr = '';
+      if (hours.closed_days && hours.closed_days.length > 0) {
+        offStr = ` (${hours.closed_days.join('、')}公休)`;
+      }
+      return `🕒 ${timeStr}${offStr}`;
+    }
   };
 
   const handleAddVenue = async (e) => {
@@ -615,95 +934,102 @@ function Admin() {
     if (!newVenue.name) return;
 
     // Filter and build court_counts payload
-    const activeCourtCounts = editingVenueId ? [] : courtCounts
+    const activeCourtCounts = courtCounts
       .filter(item => item.sport_id && item.count > 0)
       .map(item => ({
         sport_id: parseInt(item.sport_id, 10),
         count: parseInt(item.count, 10)
       }));
 
-    if (!editingVenueId && activeCourtCounts.length > 0) {
-      const uniqueSportIds = new Set(activeCourtCounts.map(item => item.sport_id));
-      if (uniqueSportIds.size !== activeCourtCounts.length) {
-        alert('請勿選擇重複的運動種類！');
-        return;
+    if (activeCourtCounts.length === 0) {
+      alert('請至少設定一個球場項目！');
+      return;
+    }
+
+    const uniqueSportIds = new Set(activeCourtCounts.map(item => item.sport_id));
+    if (uniqueSportIds.size !== activeCourtCounts.length) {
+      alert('請勿選擇重複的運動種類！');
+      return;
+    }
+
+    // Resolve zipcode
+    const foundRegion = regionsList.find(r => r.city === newVenue.city && r.district === newVenue.district);
+    const zipcode = foundRegion ? foundRegion.zipcode : '';
+    if (!zipcode) {
+      alert('無法取得該地區的郵遞區號，請確認區域設定。');
+      return;
+    }
+
+    // Build opening_hours JSON
+    let opening_hours = {};
+    if (openingHoursType === '24h') {
+      opening_hours = {
+        all: ['00:00', '24:00'],
+        regular_off: [],
+        special_off: []
+      };
+    } else {
+      if (openingHoursType === 'same' || (weekdayStart === weekendStart && weekdayEnd === weekendEnd)) {
+        const start = openingHoursType === 'same' ? sameStart : weekdayStart;
+        const end = openingHoursType === 'same' ? sameEnd : weekdayEnd;
+        opening_hours = {
+          all: [start, end],
+          regular_off: regularOff,
+          special_off: specialOff
+        };
+      } else {
+        opening_hours = {
+          weekday: [weekdayStart, weekdayEnd],
+          weekend: [weekendStart, weekendEnd],
+          regular_off: regularOff,
+          special_off: specialOff
+        };
       }
     }
 
     const payload = {
       name: newVenue.name,
-      city: newVenue.city,
-      district: newVenue.district,
+      zipcode: zipcode,
       street_line: newVenue.street_line,
       court_counts: activeCourtCounts,
-      opening_hours: { 
-        weekdays: newVenue.weekdays_hours || "08:00-22:00", 
-        weekends: newVenue.weekends_hours || "08:00-22:00",
-        closed_days: newVenue.closed_days || []
-      },
-      types: "indoor",
-      latitude: 25.0116,
-      longitude: 121.4617,
+      opening_hours: opening_hours,
       facilities: newVenue.facilities
     };
 
     try {
       if (editingVenueId) {
-        // 編輯模式
         const response = await venuesApi.updateVenue(editingVenueId, payload);
         const updatedV = {
           id: editingVenueId,
           name: response.name || newVenue.name,
-          city: response.address_detail?.city || newVenue.city,
-          district: response.address_detail?.district || newVenue.district,
-          address: response.address_detail?.street_line || newVenue.street_line,
-          facilities: response.facilities && response.facilities.length > 0 ? response.facilities : newVenue.facilities,
+          city: response.city || response.address_detail?.city || newVenue.city,
+          district: response.district || response.address_detail?.district || newVenue.district,
+          address: response.street_line || response.address_detail?.street_line || newVenue.street_line,
+          facilities: response.facilities && response.facilities.length > 0 ? response.facilities : [],
           court_count: response.court_count !== undefined ? response.court_count : 0,
           sports: response.sports || [],
           opening_hours: response.opening_hours || payload.opening_hours
         };
         setVenues(venues.map(v => v.id === editingVenueId ? updatedV : v));
         setAllVenuesForFiltering(allVenuesForFiltering.map(v => v.id === editingVenueId ? updatedV : v));
-        setEditingVenueId(null);
-        setNewVenue({ 
-          name: '', 
-          city: '桃園市', 
-          district: '桃園區', 
-          street_line: '', 
-          facilities: [],
-          weekdays_hours: '08:00-22:00',
-          weekends_hours: '08:00-22:00',
-          closed_days: []
-        });
-        setCourtCounts([{ sport_id: '', count: 1 }]);
+        handleCloseModal();
         alert('場地已更新完成！');
       } else {
-        // 新增模式
         const response = await venuesApi.createVenue(payload);
         const newV = {
           id: response.id || Date.now(),
           name: response.name || newVenue.name,
-          city: response.address_detail?.city || newVenue.city,
-          district: response.address_detail?.district || newVenue.district,
-          address: response.address_detail?.street_line || newVenue.street_line,
-          facilities: response.facilities && response.facilities.length > 0 ? response.facilities : newVenue.facilities,
+          city: response.city || response.address_detail?.city || newVenue.city,
+          district: response.district || response.address_detail?.district || newVenue.district,
+          address: response.street_line || response.address_detail?.street_line || newVenue.street_line,
+          facilities: response.facilities && response.facilities.length > 0 ? response.facilities : [],
           court_count: response.court_count !== undefined ? response.court_count : activeCourtCounts.reduce((sum, item) => sum + item.count, 0),
           sports: response.sports || activeCourtCounts.map(item => sportsList.find(s => s.id === item.sport_id)?.name).filter(Boolean),
           opening_hours: response.opening_hours || payload.opening_hours
         };
         setVenues([...venues, newV]);
         setAllVenuesForFiltering([...allVenuesForFiltering, newV]);
-        setNewVenue({ 
-          name: '', 
-          city: '桃園市', 
-          district: '桃園區', 
-          street_line: '', 
-          facilities: [],
-          weekdays_hours: '08:00-22:00',
-          weekends_hours: '08:00-22:00',
-          closed_days: []
-        });
-        setCourtCounts([{ sport_id: '', count: 1 }]);
+        handleCloseModal();
         alert('場地已新增至後端並自動生成球場！');
       }
     } catch (error) {
@@ -714,7 +1040,7 @@ function Admin() {
 
   const handleDeleteVenue = async (id) => {
     const venueToDelete = venues.find(v => v.id === id);
-    if (!venueToDelete) return;
+    if (!venueToDelete) return false;
 
     if (window.confirm(`確定要刪除場地「${venueToDelete.name}」嗎？`)) {
       if (window.confirm('請再次確認，刪除後將無法復原！確定要刪除嗎？')) {
@@ -722,13 +1048,16 @@ function Admin() {
           await adminApi.deleteVenue(id);
           setVenues(venues.filter(v => v.id !== id));
           alert('場地已成功刪除。');
+          return true;
         } catch (error) {
           console.error('Delete venue error:', error);
           const errorDetail = error.response?.data?.detail || '刪除場地失敗，請確認該場地是否被使用中。';
           alert(errorDetail);
+          return false;
         }
       }
     }
+    return false;
   };
 
   const handleOpenCourtManager = async (venue) => {
@@ -943,9 +1272,9 @@ function Admin() {
       setVenues(rawVenues.map(v => ({
         id: v.id,
         name: v.name,
-        city: v.address_detail?.city || '',
-        district: v.address_detail?.district || '',
-        address: v.address_detail?.street_line || '',
+        city: v.city || v.address_detail?.city || '',
+        district: v.district || v.address_detail?.district || '',
+        address: v.street_line || v.address_detail?.street_line || '',
         facilities: v.facilities || [],
         opening_hours: v.opening_hours || null,
         court_count: v.court_count || 0,
@@ -1112,6 +1441,383 @@ function Admin() {
     ? uniqueFacilities 
     : ["免費車位", "熱水淋浴間", "自動販賣機", "冷氣機", "廁所"];
 
+  const renderVenueModal = () => {
+    try {
+      return (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000,
+          animation: 'fadeIn 0.2s ease-out',
+          padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '24px',
+            width: '100%',
+            maxWidth: '780px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            padding: '36px',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '24px'
+          }}>
+            {/* Close button */}
+            <button 
+              onClick={handleCloseModal}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: 'none',
+                border: 'none',
+                fontSize: '24px',
+                cursor: 'pointer',
+                color: '#64748b',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '50%',
+                backgroundColor: '#f1f5f9'
+              }}
+            >
+              &times;
+            </button>
+
+            <h3 style={{ margin: 0, fontSize: '22px', fontWeight: '800', color: '#1e293b' }}>
+              {editingVenueId ? "編輯場地資料" : "新增場地資料"}
+            </h3>
+
+            <form onSubmit={handleAddVenue} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              {/* 基本資料網格 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: '700' }}>場地名稱</label>
+                  <input required type="text" className="form-input" style={{ margin: 0 }} placeholder="例如：板橋第二運動場" value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} />
+                </div>
+                
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: '700' }}>詳細地址</label>
+                  <input required type="text" className="form-input" style={{ margin: 0 }} placeholder="例如：雙十路二段100號" value={newVenue.street_line} onChange={e => setNewVenue({...newVenue, street_line: e.target.value})} />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: '700' }}>縣市</label>
+                  <select 
+                    className="form-input" 
+                    style={{ margin: 0 }}
+                    value={newVenue.city} 
+                    onChange={e => {
+                      const selectedCity = e.target.value;
+                      const dists = citiesToUse[selectedCity] || [];
+                      setNewVenue({
+                        ...newVenue, 
+                        city: selectedCity, 
+                        district: dists[0] || ''
+                      });
+                    }}
+                  >
+                    {Object.keys(citiesToUse).map(city => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: '700' }}>區域</label>
+                  <select 
+                    className="form-input" 
+                    style={{ margin: 0 }}
+                    value={newVenue.district} 
+                    onChange={e => setNewVenue({...newVenue, district: e.target.value})}
+                  >
+                    {(citiesToUse[newVenue.city] || []).map(dist => (
+                      <option key={dist} value={dist}>{dist}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* 營業時間設置區 */}
+              <div style={{ padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <span style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>🕒 營業時間設置</span>
+                
+                {/* 模式選擇 */}
+                <div style={{ display: 'flex', gap: '16px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', cursor: 'pointer', fontWeight: '500' }}>
+                    <input type="radio" name="openingHoursType" checked={openingHoursType === 'same'} onChange={() => setOpeningHoursType('same')} />
+                    平日假日相同
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', cursor: 'pointer', fontWeight: '500' }}>
+                    <input type="radio" name="openingHoursType" checked={openingHoursType === 'separate'} onChange={() => setOpeningHoursType('separate')} />
+                    平日假日分開
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', cursor: 'pointer', fontWeight: '500' }}>
+                    <input type="radio" name="openingHoursType" checked={openingHoursType === '24h'} onChange={() => setOpeningHoursType('24h')} />
+                    24小時營業
+                  </label>
+                </div>
+
+                {/* 時間選擇器 */}
+                {openingHoursType === 'same' && (
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '600' }}>營業時間:</span>
+                    <input type="time" className="form-input" style={{ width: '130px', margin: 0 }} value={sameStart} onChange={e => setSameStart(e.target.value)} />
+                    <span>至</span>
+                    <input type="time" className="form-input" style={{ width: '130px', margin: 0 }} value={sameEnd} onChange={e => setSameEnd(e.target.value)} />
+                  </div>
+                )}
+
+                {openingHoursType === 'separate' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '14px', fontWeight: '600', width: '70px' }}>平日營業:</span>
+                      <input type="time" className="form-input" style={{ width: '130px', margin: 0 }} value={weekdayStart} onChange={e => setWeekdayStart(e.target.value)} />
+                      <span>至</span>
+                      <input type="time" className="form-input" style={{ width: '130px', margin: 0 }} value={weekdayEnd} onChange={e => setWeekdayEnd(e.target.value)} />
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '14px', fontWeight: '600', width: '70px' }}>假日營業:</span>
+                      <input type="time" className="form-input" style={{ width: '130px', margin: 0 }} value={weekendStart} onChange={e => setWeekendStart(e.target.value)} />
+                      <span>至</span>
+                      <input type="time" className="form-input" style={{ width: '130px', margin: 0 }} value={weekendEnd} onChange={e => setWeekendEnd(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+
+                {openingHoursType !== '24h' && (
+                  <>
+                    <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '8px 0' }} />
+                    
+                    {/* 公休日 (1~7) */}
+                    <div>
+                      <span style={{ fontSize: '14px', fontWeight: '700', display: 'block', marginBottom: '8px' }}>固定公休日</span>
+                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        {[
+                          { val: 1, label: '週一' },
+                          { val: 2, label: '週二' },
+                          { val: 3, label: '週三' },
+                          { val: 4, label: '週四' },
+                          { val: 5, label: '週五' },
+                          { val: 6, label: '週六' },
+                          { val: 7, label: '週日' }
+                        ].map(day => {
+                          const isOff = regularOff.includes(day.val);
+                          return (
+                            <label key={day.val} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={isOff} 
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    setNewVenue(prev => ({ ...prev, regular_off: [...regularOff, day.val] }));
+                                    setRegularOff([...regularOff, day.val]);
+                                  } else {
+                                    setNewVenue(prev => ({ ...prev, regular_off: regularOff.filter(d => d !== day.val) }));
+                                    setRegularOff(regularOff.filter(d => d !== day.val));
+                                  }
+                                }} 
+                              />
+                              {day.label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '8px 0' }} />
+
+                    {/* 特殊休假日 */}
+                    <div>
+                      <span style={{ fontSize: '14px', fontWeight: '700', display: 'block', marginBottom: '8px' }}>特殊休假日</span>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                        <input type="date" className="form-input" style={{ width: '180px', margin: 0 }} value={tempSpecialOffDate} onChange={e => setTempSpecialOffDate(e.target.value)} />
+                        <button 
+                          type="button" 
+                          className="btn-outline" 
+                          style={{ margin: 0, padding: '6px 12px', fontSize: '13px' }}
+                          onClick={() => {
+                            if (tempSpecialOffDate && !specialOff.includes(tempSpecialOffDate)) {
+                              setSpecialOff([...specialOff, tempSpecialOffDate]);
+                              setTempSpecialOffDate('');
+                            }
+                          }}
+                        >
+                          新增日期
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {specialOff.map(d => (
+                          <span key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', backgroundColor: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: '12px', fontWeight: '600' }}>
+                            {d}
+                            <button 
+                              type="button" 
+                              onClick={() => setSpecialOff(specialOff.filter(item => item !== d))}
+                              style={{ background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', padding: 0, fontSize: '14px', lineHeight: 1 }}
+                            >
+                              &times;
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* 主要運動球類與數量 */}
+              <div style={{ padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <span style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>🎾 球場配置</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {courtCounts.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <select 
+                        required
+                        className="form-input" 
+                        style={{ flex: 2, margin: 0 }}
+                        value={item.sport_id} 
+                        onChange={e => handleSportChange(idx, e.target.value)}
+                      >
+                        <option value="">選擇運動種類</option>
+                        {sportsList.map(sport => (
+                          <option key={sport.id} value={sport.id}>{sport.name}</option>
+                        ))}
+                      </select>
+                      <input 
+                        required
+                        type="number" 
+                        min="1" 
+                        className="form-input" 
+                        style={{ flex: 1, margin: 0 }}
+                        placeholder="數量" 
+                        value={item.count} 
+                        onChange={e => {
+                          const updated = [...courtCounts];
+                          updated[idx].count = parseInt(e.target.value, 10) || 1;
+                          setCourtCounts(updated);
+                        }} 
+                      />
+                      {courtCounts.length > 1 && (
+                        <button 
+                          type="button" 
+                          className="btn-outline" 
+                          style={{ padding: '8px 12px', color: '#ef4444', borderColor: '#fee2e2', backgroundColor: '#fef2f2', margin: 0 }}
+                          onClick={() => {
+                            setCourtCounts(courtCounts.filter((_, i) => i !== idx));
+                          }}
+                        >
+                          移除
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {courtCounts.length < 4 && (
+                  <button 
+                    type="button" 
+                    className="btn-outline" 
+                    style={{ alignSelf: 'flex-start', padding: '6px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    onClick={handleAddNewSportRow}
+                  >
+                    <Plus size={14} /> 新增球類項目
+                  </button>
+                )}
+              </div>
+
+              {/* 設施清單 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>設施 (可複選)</span>
+                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', padding: '12px 16px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#f8fafc' }}>
+                  {facilitiesList.map((fac) => (
+                    <label key={fac.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', cursor: 'pointer', fontWeight: '500', color: '#334155' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={newVenue.facilities.includes(fac.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setNewVenue({ ...newVenue, facilities: [...newVenue.facilities, fac.id] });
+                          } else {
+                            setNewVenue({ ...newVenue, facilities: newVenue.facilities.filter(id => id !== fac.id) });
+                          }
+                        }}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                      />
+                      {fac.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* 表單送出與刪除按鈕 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', gap: '12px', flexWrap: 'wrap' }}>
+                <div>
+                  {editingVenueId && (
+                    <button 
+                      type="button" 
+                      className="btn-outline" 
+                      onClick={async () => {
+                        const success = await handleDeleteVenue(editingVenueId);
+                        if (success) {
+                          handleCloseModal();
+                        }
+                      }} 
+                      style={{ 
+                        color: '#ef4444', 
+                        borderColor: '#fee2e2', 
+                        backgroundColor: '#fef2f2', 
+                        margin: 0,
+                        padding: '10px 18px',
+                        fontWeight: '700',
+                        borderRadius: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <Trash2 size={16} /> 刪除此場地
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button type="button" className="btn-outline" onClick={handleCloseModal} style={{ margin: 0 }}>
+                    取消
+                  </button>
+                  <button type="submit" className="login-button" style={{ width: '160px', margin: 0 }}>
+                    {editingVenueId ? "儲存修改" : "確認新增"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    } catch (error) {
+      console.error('Error rendering venue modal:', error);
+      return (
+        <div style={{ position: 'fixed', zIndex: 9999, backgroundColor: '#ef4444', color: 'white', padding: '24px', top: '20px', left: '20px', right: '20px', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)' }}>
+          <h3 style={{ margin: '0 0 8px' }}>❌ 渲染場地彈窗出錯 (Render Error)</h3>
+          <p style={{ margin: '0 0 12px', fontSize: '14px' }}>{error.message}</p>
+          <pre style={{ margin: 0, fontSize: '12px', overflowX: 'auto', backgroundColor: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px' }}>{error.stack}</pre>
+          <button onClick={handleCloseModal} style={{ marginTop: '12px', padding: '6px 12px', backgroundColor: 'white', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>關閉視窗</button>
+        </div>
+      );
+    }
+  };
+
   if (!isMobile) {
     return (
     <div className="admin-container" style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
@@ -1246,13 +1952,37 @@ function Admin() {
           <div className="admin-content">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
               <h2 style={{ margin: 0 }}>場地管理</h2>
-              <button className="btn-primary" onClick={() => document.getElementById('add-venue-form').scrollIntoView({ behavior: 'smooth' })}>
+              <button className="btn-primary" onClick={handleStartAddNewVenue}>
                 <Plus size={18} /> 新增場地
               </button>
             </div>
 
-            {/* 縣市/區域 篩選查詢 */}
-            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', backgroundColor: 'white', padding: '16px 24px', borderRadius: '12px', border: '1px solid #e2e8f0', alignItems: 'center' }}>
+             {/* 縣市/區域 篩選查詢 */}
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', backgroundColor: 'white', padding: '16px 24px', borderRadius: '12px', border: '1px solid #e2e8f0', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: '#64748b' }}>名稱搜尋：</span>
+                <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                  <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px' }} />
+                  <input 
+                    type="text" 
+                    placeholder="搜尋場地名稱..." 
+                    value={venueSearchQuery}
+                    onChange={e => {
+                      setVenueSearchQuery(e.target.value);
+                      setVenuePage(1);
+                    }}
+                    style={{ 
+                      padding: '8px 10px 8px 30px', 
+                      borderRadius: '8px', 
+                      border: '1px solid #cbd5e1', 
+                      fontSize: '13px', 
+                      width: '180px',
+                      margin: 0
+                    }}
+                  />
+                </div>
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '14px', fontWeight: '700', color: '#64748b' }}>篩選縣市：</span>
                 <select 
@@ -1309,6 +2039,7 @@ function Admin() {
                   setFilterCity('');
                   setFilterDistrict('');
                   setFilterSport('');
+                  setVenueSearchQuery('');
                 }}
               >
                 重置篩選
@@ -1327,19 +2058,14 @@ function Admin() {
                   </tr>
                 </thead>
                 <tbody>
-                  {venues.map(v => (
+                  {paginatedVenues.map(v => (
                     <tr key={v.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                       <td style={{ padding: '16px', fontWeight: '700' }}>{v.name}</td>
                       <td style={{ padding: '16px' }}>
                         <div>{v.address}</div>
                         {v.opening_hours && (
                           <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                            🕒 平日: {v.opening_hours.weekdays || '無'} | 假日: {v.opening_hours.weekends || '無'}
-                            {v.opening_hours.closed_days && v.opening_hours.closed_days.length > 0 && (
-                              <span style={{ color: '#ef4444', marginLeft: '6px', fontWeight: 'bold' }}>
-                                ({v.opening_hours.closed_days.join('、')}公休)
-                              </span>
-                            )}
+                            {formatOpeningHours(v.opening_hours)}
                           </div>
                         )}
                       </td>
@@ -1354,14 +2080,8 @@ function Admin() {
                         </div>
                       </td>
                       <td style={{ padding: '16px' }}>
-                        <button onClick={() => handleOpenCourtManager(v)} style={{ color: '#0ea5e9', background: 'none', border: 'none', cursor: 'pointer', marginRight: '12px' }} title="管理球場">
-                          <Wrench size={18} />
-                        </button>
-                        <button onClick={() => handleStartEdit(v)} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', marginRight: '12px' }} title="編輯場地">
-                          <Pencil size={18} />
-                        </button>
-                        <button onClick={() => handleDeleteVenue(v.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }} title="刪除場地">
-                          <Trash2 size={18} />
+                        <button onClick={() => handleStartEdit(v)} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 'bold' }} title="編輯場地">
+                          <Pencil size={18} /> 編輯
                         </button>
                       </td>
                     </tr>
@@ -1376,183 +2096,9 @@ function Admin() {
                 </tbody>
               </table>
             </div>
+            {renderVenuePagination(totalVenuePages)}
 
-            <div id="add-venue-form" style={{ marginTop: '40px', backgroundColor: 'white', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-              <h3 style={{ marginBottom: '24px' }}>{editingVenueId ? "編輯場地資料" : "新增場地資料"}</h3>
-              <form onSubmit={handleAddVenue} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                <div className="form-group">
-                  <label className="form-label">場地名稱</label>
-                  <input required type="text" className="form-input" placeholder="例如：板橋第二運動場" value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">縣市</label>
-                  <select 
-                    className="form-input" 
-                    value={newVenue.city} 
-                    onChange={e => {
-                      const selectedCity = e.target.value;
-                      const dists = citiesToUse[selectedCity] || [];
-                      setNewVenue({
-                        ...newVenue, 
-                        city: selectedCity, 
-                        district: dists[0] || ''
-                      });
-                    }}
-                  >
-                    {Object.keys(citiesToUse).map(city => (
-                      <option key={city} value={city}>{city}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">區域</label>
-                  <select 
-                    className="form-input" 
-                    value={newVenue.district} 
-                    onChange={e => setNewVenue({...newVenue, district: e.target.value})}
-                  >
-                    {(citiesToUse[newVenue.city] || []).map(dist => (
-                      <option key={dist} value={dist}>{dist}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">詳細地址</label>
-                  <input required type="text" className="form-input" placeholder="例如：雙十路二段100號" value={newVenue.street_line} onChange={e => setNewVenue({...newVenue, street_line: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">營業時間 (平日)</label>
-                  <input required type="text" className="form-input" placeholder="例如：08:00-22:00" value={newVenue.weekdays_hours || ''} onChange={e => setNewVenue({...newVenue, weekdays_hours: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">營業時間 (假日)</label>
-                  <input required type="text" className="form-input" placeholder="例如：08:00-22:00" value={newVenue.weekends_hours || ''} onChange={e => setNewVenue({...newVenue, weekends_hours: e.target.value})} />
-                </div>
-                <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label className="form-label" style={{ fontWeight: '700' }}>公休日 (可複選)</label>
-                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '8px' }}>
-                    {['週一', '週二', '週三', '週四', '週五', '週六', '週日'].map(day => {
-                      const isClosed = newVenue.closed_days?.includes(day);
-                      return (
-                        <label key={day} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '14px', cursor: 'pointer' }}>
-                          <input 
-                            type="checkbox" 
-                            checked={isClosed} 
-                            onChange={e => {
-                              const checked = e.target.checked;
-                              const currentClosed = newVenue.closed_days || [];
-                              if (checked) {
-                                setNewVenue({ ...newVenue, closed_days: [...currentClosed, day] });
-                              } else {
-                                setNewVenue({ ...newVenue, closed_days: currentClosed.filter(d => d !== day) });
-                              }
-                            }} 
-                          />
-                          {day}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-                {!editingVenueId && (
-                  <div className="form-group" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <label className="form-label" style={{ fontWeight: '700', marginBottom: 0 }}>主要運動球類與數量 (可新增 1 至 4 種)</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {courtCounts.map((item, idx) => (
-                        <div key={idx} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                          <select 
-                            required
-                            className="form-input" 
-                            style={{ flex: 2, margin: 0 }}
-                            value={item.sport_id} 
-                            onChange={e => {
-                              const updated = [...courtCounts];
-                              updated[idx].sport_id = e.target.value;
-                              setCourtCounts(updated);
-                            }}
-                          >
-                            <option value="">選擇運動種類</option>
-                            {sportsList.map(sport => (
-                              <option key={sport.id} value={sport.id}>{sport.name}</option>
-                            ))}
-                          </select>
-                          <input 
-                            required
-                            type="number" 
-                            min="1" 
-                            className="form-input" 
-                            style={{ flex: 1, margin: 0 }}
-                            placeholder="數量" 
-                            value={item.count} 
-                            onChange={e => {
-                              const updated = [...courtCounts];
-                              updated[idx].count = parseInt(e.target.value, 10) || 1;
-                              setCourtCounts(updated);
-                            }} 
-                          />
-                          {courtCounts.length > 1 && (
-                            <button 
-                              type="button" 
-                              className="btn-outline" 
-                              style={{ padding: '8px 12px', color: '#ef4444', borderColor: '#fee2e2', backgroundColor: '#fef2f2', margin: 0 }}
-                              onClick={() => {
-                                setCourtCounts(courtCounts.filter((_, i) => i !== idx));
-                              }}
-                            >
-                              移除
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    {courtCounts.length < 4 && (
-                      <button 
-                        type="button" 
-                        className="btn-outline" 
-                        style={{ alignSelf: 'flex-start', padding: '6px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        onClick={() => {
-                          setCourtCounts([...courtCounts, { sport_id: '', count: 1 }]);
-                        }}
-                      >
-                        <Plus size={14} /> 新增運動項目
-                      </button>
-                    )}
-                  </div>
-                )}
-                <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label className="form-label" style={{ marginBottom: '8px', display: 'block' }}>設施 (複選)</label>
-                  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', padding: '12px 16px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#f8fafc' }}>
-                    {defaultFacilities.map((fac) => (
-                      <label key={fac} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer', fontWeight: '500', color: '#334155', userSelect: 'none' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={newVenue.facilities.includes(fac)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setNewVenue({ ...newVenue, facilities: [...newVenue.facilities, fac] });
-                            } else {
-                              setNewVenue({ ...newVenue, facilities: newVenue.facilities.filter(f => f !== fac) });
-                            }
-                          }}
-                          style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#3b82f6' }}
-                        />
-                        {fac}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ gridColumn: 'span 2', display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <button type="submit" className="login-button" style={{ width: '200px' }}>
-                    {editingVenueId ? "儲存修改場地" : "確認新增場地"}
-                  </button>
-                  {editingVenueId && (
-                    <button type="button" className="btn-outline" onClick={handleCancelEdit} style={{ margin: 0 }}>
-                      取消編輯
-                    </button>
-                  )}
-                </div>
-              </form>
-            </div>
+
           </div>
         )}
 
@@ -2319,7 +2865,7 @@ function Admin() {
           </div>
         )}
 
-                {/* 房間狀態調整 Tab */}
+        {/* 房間狀態調整 Tab */}
         {activeTab === 'demo_games' && (
           <div className="admin-content">
             <h2 style={{ marginBottom: '8px', color: '#1e293b' }}>🛠️ 房間狀態調整 (Room Status Tool)</h2>
@@ -2796,6 +3342,7 @@ function Admin() {
           </div>
         </div>
       )}
+      {isVenueModalOpen && renderVenueModal()}
     </div>
   );
   }
@@ -2865,285 +3412,99 @@ function Admin() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <h2 style={{ fontSize: '20px', margin: 0, fontWeight: '800' }}>場地管理</h2>
-      </div>
-
-      <div className="admin-sub-tabs">
         <button 
-          className={`admin-sub-tab-btn ${venueSubTab === 'list' ? 'active' : ''}`}
-          onClick={() => setVenueSubTab('list')}
+          className="btn-primary" 
+          style={{ padding: '6px 12px', fontSize: '13px', margin: 0 }}
+          onClick={handleStartAddNewVenue}
         >
-          場地列表
-        </button>
-        <button 
-          className={`admin-sub-tab-btn ${venueSubTab === 'create' ? 'active' : ''}`}
-          onClick={() => {
-            setVenueSubTab('create');
-            if (!editingVenueId) {
-              setNewVenue({ name: '', city: '桃園市', district: '桃園區', street_line: '', facilities: [] });
-              setCourtCounts([{ sport_id: '', count: 1 }]);
-            }
-          }}
-        >
-          {editingVenueId ? "編輯場地" : "新增場地"}
+          <Plus size={16} /> 新增場地
         </button>
       </div>
 
-      {venueSubTab === 'list' ? (
-        <div>
-          {/* Filters */}
-          <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>縣市</span>
-              <select className="form-input" style={{ margin: 0 }} value={filterCity} onChange={(e) => { setFilterCity(e.target.value); setFilterDistrict(''); }}>
-                <option value="">全部縣市</option>
-                {cityOptions.map(city => <option key={city} value={city}>{city}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>區域</span>
-              <select className="form-input" style={{ margin: 0 }} value={filterDistrict} onChange={(e) => setFilterDistrict(e.target.value)} disabled={!filterCity}>
-                <option value="">{filterCity ? "全部區域" : "請先選擇縣市"}</option>
-                {districtOptions.map(dist => <option key={dist} value={dist}>{dist}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>運動</span>
-              <select className="form-input" style={{ margin: 0 }} value={filterSport} onChange={(e) => setFilterSport(e.target.value)}>
-                <option value="">全部運動</option>
-                {sportsList.map(sport => <option key={sport.id} value={sport.id}>{sport.name}</option>)}
-              </select>
-            </div>
-            <button className="btn-outline" style={{ marginTop: '8px', padding: '8px 16px', width: '100%', margin: 0 }} onClick={() => { setFilterCity(''); setFilterDistrict(''); setFilterSport(''); }}>
-              重置篩選
-            </button>
+      {/* Filters */}
+      <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>名稱搜尋</span>
+          <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+            <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px' }} />
+            <input 
+              type="text" 
+              className="form-input"
+              placeholder="搜尋場地名稱..." 
+              value={venueSearchQuery}
+              onChange={e => {
+                setVenueSearchQuery(e.target.value);
+                setVenuePage(1);
+              }}
+              style={{ 
+                padding: '8px 10px 8px 30px', 
+                margin: 0,
+                width: '100%'
+              }}
+            />
           </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>縣市</span>
+          <select className="form-input" style={{ margin: 0 }} value={filterCity} onChange={(e) => { setFilterCity(e.target.value); setFilterDistrict(''); }}>
+            <option value="">全部縣市</option>
+            {cityOptions.map(city => <option key={city} value={city}>{city}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>區域</span>
+          <select className="form-input" style={{ margin: 0 }} value={filterDistrict} onChange={(e) => setFilterDistrict(e.target.value)} disabled={!filterCity}>
+            <option value="">{filterCity ? "全部區域" : "請先選擇縣市"}</option>
+            {districtOptions.map(dist => <option key={dist} value={dist}>{dist}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>運動</span>
+          <select className="form-input" style={{ margin: 0 }} value={filterSport} onChange={(e) => setFilterSport(e.target.value)}>
+            <option value="">全部運動</option>
+            {sportsList.map(sport => <option key={sport.id} value={sport.id}>{sport.name}</option>)}
+          </select>
+        </div>
+        <button className="btn-outline" style={{ marginTop: '8px', padding: '8px 16px', width: '100%', margin: 0 }} onClick={() => { setFilterCity(''); setFilterDistrict(''); setFilterSport(''); setVenueSearchQuery(''); }}>
+          重置篩選
+        </button>
+      </div>
 
-          {/* Cards List */}
-          <div>
-            {venues.map(v => (
-              <div key={v.id} className="admin-venue-card">
-                <div className="admin-venue-card-header">
-                  <h4 className="admin-venue-card-title">{v.name}</h4>
-                  <span style={{ fontSize: '12px', fontWeight: '700', color: '#0284c7' }}>{v.court_count} 個球場</span>
-                </div>
-                <p className="admin-venue-card-address">📍 {v.address}</p>
-                {v.opening_hours && (
-                  <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 8px 0', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                    🕒 平日: {v.opening_hours.weekdays || '無'} | 假日: {v.opening_hours.weekends || '無'}
-                    {v.opening_hours.closed_days && v.opening_hours.closed_days.length > 0 && (
-                      <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
-                        ({v.opening_hours.closed_days.join('、')}公休)
-                      </span>
-                    )}
-                  </p>
-                )}
-                <div className="admin-venue-card-details">
-                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                    {v.facilities.map((f, i) => (
-                      <span key={i} style={{ fontSize: '11px', backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>{f}</span>
-                    ))}
-                  </div>
-                </div>
-                <div className="admin-venue-card-actions">
-                  <button onClick={() => handleOpenCourtManager(v)} style={{ color: '#0ea5e9', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'bold' }}>
-                    <Wrench size={16} /> 球場
-                  </button>
-                  <button onClick={() => { handleStartEdit(v); setVenueSubTab('create'); }} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'bold' }}>
-                    <Pencil size={16} /> 編輯
-                  </button>
-                  <button onClick={() => handleDeleteVenue(v.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'bold' }}>
-                    <Trash2 size={16} /> 刪除
-                  </button>
-                </div>
-              </div>
-            ))}
-            {venues.length === 0 && (
-              <div style={{ backgroundColor: 'white', padding: '32px', textAlign: 'center', borderRadius: '12px', border: '1px solid #e2e8f0', color: '#94a3b8' }}>
-                {hasActiveFilter ? "目前無符合條件的場地。" : "請選擇篩選條件以查詢場地。"}
-              </div>
+      {/* Cards List */}
+      <div>
+        {paginatedVenues.map(v => (
+          <div key={v.id} className="admin-venue-card">
+            <div className="admin-venue-card-header">
+              <h4 className="admin-venue-card-title">{v.name}</h4>
+              <span style={{ fontSize: '12px', fontWeight: '700', color: '#0284c7' }}>{v.court_count} 個球場</span>
+            </div>
+            <p className="admin-venue-card-address">📍 {v.address}</p>
+            {v.opening_hours && (
+              <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 8px 0', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                {formatOpeningHours(v.opening_hours)}
+              </p>
             )}
+            <div className="admin-venue-card-details">
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                {v.facilities.map((f, i) => (
+                  <span key={i} style={{ fontSize: '11px', backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>{f}</span>
+                ))}
+              </div>
+            </div>
+            <div className="admin-venue-card-actions">
+              <button onClick={() => handleStartEdit(v)} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'bold' }}>
+                <Pencil size={16} /> 編輯
+              </button>
+            </div>
           </div>
-        </div>
-      ) : (
-        /* Add/Edit Form */
-        <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-          <h3 style={{ marginBottom: '16px', fontWeight: '800' }}>{editingVenueId ? "編輯場地資料" : "新增場地資料"}</h3>
-          <form onSubmit={async (e) => {
-            await handleAddVenue(e);
-            setVenueSubTab('list');
-          }} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div className="form-group">
-              <label className="form-label">場地名稱</label>
-              <input required type="text" className="form-input" placeholder="例如：板橋第二運動場" value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">縣市</label>
-              <select 
-                className="form-input" 
-                value={newVenue.city} 
-                onChange={e => {
-                  const selectedCity = e.target.value;
-                  const dists = citiesToUse[selectedCity] || [];
-                  setNewVenue({
-                    ...newVenue, 
-                    city: selectedCity, 
-                    district: dists[0] || ''
-                  });
-                }}
-              >
-                {Object.keys(citiesToUse).map(city => (
-                  <option key={city} value={city}>{city}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">區域</label>
-              <select 
-                className="form-input" 
-                value={newVenue.district} 
-                onChange={e => setNewVenue({...newVenue, district: e.target.value})}
-              >
-                {(citiesToUse[newVenue.city] || []).map(dist => (
-                  <option key={dist} value={dist}>{dist}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">詳細地址</label>
-              <input required type="text" className="form-input" placeholder="例如：雙十路二段100號" value={newVenue.street_line} onChange={e => setNewVenue({...newVenue, street_line: e.target.value})} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">營業時間 (平日)</label>
-              <input required type="text" className="form-input" placeholder="例如：08:00-22:00" value={newVenue.weekdays_hours || ''} onChange={e => setNewVenue({...newVenue, weekdays_hours: e.target.value})} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">營業時間 (假日)</label>
-              <input required type="text" className="form-input" placeholder="例如：08:00-22:00" value={newVenue.weekends_hours || ''} onChange={e => setNewVenue({...newVenue, weekends_hours: e.target.value})} />
-            </div>
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: '700' }}>公休日 (可複選)</label>
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '6px' }}>
-                {['週一', '週二', '週三', '週四', '週五', '週六', '週日'].map(day => {
-                  const isClosed = newVenue.closed_days?.includes(day);
-                  return (
-                    <label key={day} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={isClosed} 
-                        onChange={e => {
-                          const checked = e.target.checked;
-                          const currentClosed = newVenue.closed_days || [];
-                          if (checked) {
-                            setNewVenue({ ...newVenue, closed_days: [...currentClosed, day] });
-                          } else {
-                            setNewVenue({ ...newVenue, closed_days: currentClosed.filter(d => d !== day) });
-                          }
-                        }} 
-                      />
-                      {day}
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-            {!editingVenueId && (
-              <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <label className="form-label" style={{ fontWeight: '700', marginBottom: 0 }}>主要運動球類與數量 (可新增 1 至 4 種)</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {courtCounts.map((item, idx) => (
-                    <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <select 
-                        required
-                        className="form-input" 
-                        style={{ flex: 2, margin: 0, padding: '8px', fontSize: '13px' }}
-                        value={item.sport_id} 
-                        onChange={e => {
-                          const updated = [...courtCounts];
-                          updated[idx].sport_id = e.target.value;
-                          setCourtCounts(updated);
-                        }}
-                      >
-                        <option value="">選擇球類</option>
-                        {sportsList.map(sport => (
-                          <option key={sport.id} value={sport.id}>{sport.name}</option>
-                        ))}
-                      </select>
-                      <input 
-                        required
-                        type="number" 
-                        min="1" 
-                        className="form-input" 
-                        style={{ flex: 1, margin: 0, padding: '8px', fontSize: '13px' }}
-                        placeholder="數量" 
-                        value={item.count} 
-                        onChange={e => {
-                          const updated = [...courtCounts];
-                          updated[idx].count = parseInt(e.target.value, 10) || 1;
-                          setCourtCounts(updated);
-                        }} 
-                      />
-                      {courtCounts.length > 1 && (
-                        <button 
-                          type="button" 
-                          className="btn-outline" 
-                          style={{ padding: '6px 8px', color: '#ef4444', borderColor: '#fee2e2', backgroundColor: '#fef2f2', margin: 0, fontSize: '12px' }}
-                          onClick={() => {
-                            setCourtCounts(courtCounts.filter((_, i) => i !== idx));
-                          }}
-                        >
-                          移除
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                {courtCounts.length < 4 && (
-                  <button 
-                    type="button" 
-                    className="btn-outline" 
-                    style={{ alignSelf: 'flex-start', padding: '4px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                    onClick={() => {
-                      setCourtCounts([...courtCounts, { sport_id: '', count: 1 }]);
-                    }}
-                  >
-                    <Plus size={12} /> 新增運動項目
-                  </button>
-                )}
-              </div>
-            )}
-            <div className="form-group">
-              <label className="form-label" style={{ marginBottom: '8px', display: 'block' }}>設施 (複選)</label>
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#f8fafc' }}>
-                {defaultFacilities.map((fac) => (
-                  <label key={fac} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', color: '#334155' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={newVenue.facilities.includes(fac)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setNewVenue({ ...newVenue, facilities: [...newVenue.facilities, fac] });
-                        } else {
-                          setNewVenue({ ...newVenue, facilities: newVenue.facilities.filter(f => f !== fac) });
-                        }
-                      }}
-                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                    />
-                    {fac}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-              <button type="submit" className="login-button" style={{ flex: 1 }}>
-                儲存
-              </button>
-              <button type="button" className="btn-outline" onClick={() => { handleCancelEdit(); setVenueSubTab('list'); }} style={{ flex: 1, margin: 0 }}>
-                取消
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+        ))}
+        {venues.length === 0 && (
+          <div style={{ backgroundColor: 'white', padding: '32px', textAlign: 'center', borderRadius: '12px', border: '1px solid #e2e8f0', color: '#94a3b8' }}>
+            {hasActiveFilter ? "目前無符合條件的場地。" : "請選擇篩選條件以查詢場地。"}
+          </div>
+        )}
+      </div>
+      {renderVenuePagination(totalVenuePages)}
     </div>
   );
 
@@ -4139,6 +4500,338 @@ function Admin() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* 編輯/新增場地 Modal */}
+      {isVenueModalOpen && renderVenueModal()}
+      {false && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000,
+          animation: 'fadeIn 0.2s ease-out',
+          padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '24px',
+            width: '100%',
+            maxWidth: '780px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            padding: '36px',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '24px'
+          }}>
+            {/* Close button */}
+            <button 
+              onClick={handleCloseModal}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: 'none',
+                border: 'none',
+                fontSize: '24px',
+                cursor: 'pointer',
+                color: '#64748b',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '50%',
+                backgroundColor: '#f1f5f9'
+              }}
+            >
+              &times;
+            </button>
+
+            <h3 style={{ margin: 0, fontSize: '22px', fontWeight: '800', color: '#1e293b' }}>
+              {editingVenueId ? "編輯場地資料" : "新增場地資料"}
+            </h3>
+
+            <form onSubmit={handleAddVenue} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              {/* 基本資料網格 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: '700' }}>場地名稱</label>
+                  <input required type="text" className="form-input" style={{ margin: 0 }} placeholder="例如：板橋第二運動場" value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} />
+                </div>
+                
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: '700' }}>詳細地址</label>
+                  <input required type="text" className="form-input" style={{ margin: 0 }} placeholder="例如：雙十路二段100號" value={newVenue.street_line} onChange={e => setNewVenue({...newVenue, street_line: e.target.value})} />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: '700' }}>縣市</label>
+                  <select 
+                    className="form-input" 
+                    style={{ margin: 0 }}
+                    value={newVenue.city} 
+                    onChange={e => {
+                      const selectedCity = e.target.value;
+                      const dists = citiesToUse[selectedCity] || [];
+                      setNewVenue({
+                        ...newVenue, 
+                        city: selectedCity, 
+                        district: dists[0] || ''
+                      });
+                    }}
+                  >
+                    {Object.keys(citiesToUse).map(city => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: '700' }}>區域</label>
+                  <select 
+                    className="form-input" 
+                    style={{ margin: 0 }}
+                    value={newVenue.district} 
+                    onChange={e => setNewVenue({...newVenue, district: e.target.value})}
+                  >
+                    {(citiesToUse[newVenue.city] || []).map(dist => (
+                      <option key={dist} value={dist}>{dist}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* 營業時間設置區 */}
+              <div style={{ padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <span style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>🕒 營業時間設置</span>
+                
+                {/* 模式選擇 */}
+                <div style={{ display: 'flex', gap: '16px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', cursor: 'pointer', fontWeight: '500' }}>
+                    <input type="radio" name="openingHoursType" checked={openingHoursType === 'same'} onChange={() => setOpeningHoursType('same')} />
+                    平日假日相同
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', cursor: 'pointer', fontWeight: '500' }}>
+                    <input type="radio" name="openingHoursType" checked={openingHoursType === 'separate'} onChange={() => setOpeningHoursType('separate')} />
+                    平日假日分開
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', cursor: 'pointer', fontWeight: '500' }}>
+                    <input type="radio" name="openingHoursType" checked={openingHoursType === '24h'} onChange={() => setOpeningHoursType('24h')} />
+                    24小時營業
+                  </label>
+                </div>
+
+                {/* 時間選擇器 */}
+                {openingHoursType === 'same' && (
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '600' }}>營業時間:</span>
+                    <input type="time" className="form-input" style={{ width: '130px', margin: 0 }} value={sameStart} onChange={e => setSameStart(e.target.value)} />
+                    <span>至</span>
+                    <input type="time" className="form-input" style={{ width: '130px', margin: 0 }} value={sameEnd} onChange={e => setSameEnd(e.target.value)} />
+                  </div>
+                )}
+
+                {openingHoursType === 'separate' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '14px', fontWeight: '600', width: '70px' }}>平日營業:</span>
+                      <input type="time" className="form-input" style={{ width: '130px', margin: 0 }} value={weekdayStart} onChange={e => setWeekdayStart(e.target.value)} />
+                      <span>至</span>
+                      <input type="time" className="form-input" style={{ width: '130px', margin: 0 }} value={weekdayEnd} onChange={e => setWeekdayEnd(e.target.value)} />
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '14px', fontWeight: '600', width: '70px' }}>假日營業:</span>
+                      <input type="time" className="form-input" style={{ width: '130px', margin: 0 }} value={weekendStart} onChange={e => setWeekendStart(e.target.value)} />
+                      <span>至</span>
+                      <input type="time" className="form-input" style={{ width: '130px', margin: 0 }} value={weekendEnd} onChange={e => setWeekendEnd(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+
+                {openingHoursType !== '24h' && (
+                  <>
+                    <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '8px 0' }} />
+                    
+                    {/* 公休日 (1~7) */}
+                    <div>
+                      <span style={{ fontSize: '14px', fontWeight: '700', display: 'block', marginBottom: '8px' }}>固定公休日</span>
+                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        {[
+                          { val: 1, label: '週一' },
+                          { val: 2, label: '週二' },
+                          { val: 3, label: '週三' },
+                          { val: 4, label: '週四' },
+                          { val: 5, label: '週五' },
+                          { val: 6, label: '週六' },
+                          { val: 7, label: '週日' }
+                        ].map(day => {
+                          const isOff = regularOff.includes(day.val);
+                          return (
+                            <label key={day.val} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={isOff} 
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    setRegularOff([...regularOff, day.val]);
+                                  } else {
+                                    setRegularOff(regularOff.filter(d => d !== day.val));
+                                  }
+                                }} 
+                              />
+                              {day.label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '8px 0' }} />
+
+                    {/* 特殊休假日 */}
+                    <div>
+                      <span style={{ fontSize: '14px', fontWeight: '700', display: 'block', marginBottom: '8px' }}>特殊休假日</span>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                        <input type="date" className="form-input" style={{ width: '180px', margin: 0 }} value={tempSpecialOffDate} onChange={e => setTempSpecialOffDate(e.target.value)} />
+                        <button 
+                          type="button" 
+                          className="btn-outline" 
+                          style={{ margin: 0, padding: '6px 12px', fontSize: '13px' }}
+                          onClick={() => {
+                            if (tempSpecialOffDate && !specialOff.includes(tempSpecialOffDate)) {
+                              setSpecialOff([...specialOff, tempSpecialOffDate]);
+                              setTempSpecialOffDate('');
+                            }
+                          }}
+                        >
+                          新增日期
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {specialOff.map(d => (
+                          <span key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', backgroundColor: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: '12px', fontWeight: '600' }}>
+                            {d}
+                            <button 
+                              type="button" 
+                              onClick={() => setSpecialOff(specialOff.filter(item => item !== d))}
+                              style={{ background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', padding: 0, fontSize: '14px', lineHeight: 1 }}
+                            >
+                              &times;
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* 主要運動球類與數量 */}
+              <div style={{ padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <span style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>🎾 球場配置</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {courtCounts.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <select 
+                        required
+                        className="form-input" 
+                        style={{ flex: 2, margin: 0 }}
+                        value={item.sport_id} 
+                        onChange={e => handleSportChange(idx, e.target.value)}
+                      >
+                        <option value="">選擇運動種類</option>
+                        {sportsList.map(sport => (
+                          <option key={sport.id} value={sport.id}>{sport.name}</option>
+                        ))}
+                      </select>
+                      <input 
+                        required
+                        type="number" 
+                        min="1" 
+                        className="form-input" 
+                        style={{ flex: 1, margin: 0 }}
+                        placeholder="數量" 
+                        value={item.count} 
+                        onChange={e => {
+                          const updated = [...courtCounts];
+                          updated[idx].count = parseInt(e.target.value, 10) || 1;
+                          setCourtCounts(updated);
+                        }} 
+                      />
+                      {courtCounts.length > 1 && (
+                        <button 
+                          type="button" 
+                          className="btn-outline" 
+                          style={{ padding: '8px 12px', color: '#ef4444', borderColor: '#fee2e2', backgroundColor: '#fef2f2', margin: 0 }}
+                          onClick={() => {
+                            setCourtCounts(courtCounts.filter((_, i) => i !== idx));
+                          }}
+                        >
+                          移除
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {courtCounts.length < 4 && (
+                  <button 
+                    type="button" 
+                    className="btn-outline" 
+                    style={{ alignSelf: 'flex-start', padding: '6px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    onClick={handleAddNewSportRow}
+                  >
+                    <Plus size={14} /> 新增球類項目
+                  </button>
+                )}
+              </div>
+
+              {/* 設施清單 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>設施 (可複選)</span>
+                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', padding: '12px 16px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#f8fafc' }}>
+                  {facilitiesList.map((fac) => (
+                    <label key={fac.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', cursor: 'pointer', fontWeight: '500', color: '#334155' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={newVenue.facilities.includes(fac.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setNewVenue({ ...newVenue, facilities: [...newVenue.facilities, fac.id] });
+                          } else {
+                            setNewVenue({ ...newVenue, facilities: newVenue.facilities.filter(id => id !== fac.id) });
+                          }
+                        }}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                      />
+                      {fac.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* 表單送出按鈕 */}
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '12px' }}>
+                <button type="button" className="btn-outline" onClick={handleCloseModal} style={{ margin: 0 }}>
+                  取消
+                </button>
+                <button type="submit" className="login-button" style={{ width: '160px', margin: 0 }}>
+                  {editingVenueId ? "儲存修改" : "確認新增"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

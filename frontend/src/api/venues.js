@@ -72,6 +72,15 @@ const venuesApi = {
       console.error('取得台灣縣市區域列表失敗:', error);
       throw error;
     }
+  },
+  getFacilities: async () => {
+    try {
+      const response = await axiosClient.get('/facilities/');
+      return response;
+    } catch (error) {
+      console.error('取得設施列表失敗:', error);
+      throw error;
+    }
   }
 };
 

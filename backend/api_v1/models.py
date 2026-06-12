@@ -144,11 +144,28 @@ class UserSportLevel(models.Model):
         unique_together = ('user', 'sport')
         managed = FORCE_SQLITE
 
-class Address(models.Model):
-    id = models.AutoField(primary_key=True, db_column='address_id')
+class TaiwanRegion(models.Model):
+    zipcode = models.CharField(max_length=5, primary_key=True, db_column='zipcode')
     city = models.CharField(max_length=50)
     district = models.CharField(max_length=50)
+
+    class Meta:
+        db_table = 'taiwan_regions'
+        unique_together = ('city', 'district')
+        managed = FORCE_SQLITE
+
+class Address(models.Model):
+    id = models.AutoField(primary_key=True, db_column='address_id')
+    zipcode = models.ForeignKey(TaiwanRegion, on_delete=models.SET_NULL, db_column='zipcode', null=True, blank=True)
     street_line = models.CharField(max_length=255)
+
+    @property
+    def city(self):
+        return self.zipcode.city if self.zipcode else ""
+
+    @property
+    def district(self):
+        return self.zipcode.district if self.zipcode else ""
 
     def __str__(self):
         return f"{self.city}{self.district}{self.street_line}"
@@ -169,16 +186,10 @@ class Facility(models.Model):
         managed = FORCE_SQLITE
 
 class Venue(models.Model):
-    VENUE_TYPES = (
-        ('indoor', 'Indoor'),
-        ('outdoor', 'Outdoor'),
-        ('semi-outdoor', 'Semi-Outdoor'),
-    )
     id = models.AutoField(primary_key=True, db_column='venue_id')
     address = models.ForeignKey(Address, on_delete=models.CASCADE, db_column='address_id', related_name='venues')
     name = models.CharField(max_length=100)
     opening_hours = models.JSONField(null=True, blank=True)
-    types = models.CharField(max_length=20, choices=VENUE_TYPES, null=True, blank=True)
     facilities = models.ManyToManyField(Facility, db_table='venue_facilities', related_name='venues')
 
     def __str__(self):
@@ -447,16 +458,6 @@ class GameBulletin(models.Model):
 
     class Meta:
         db_table = 'game_bulletins'
-        managed = FORCE_SQLITE
-
-class TaiwanRegion(models.Model):
-    zipcode = models.CharField(max_length=5, primary_key=True, db_column='zipcode')
-    city = models.CharField(max_length=50)
-    district = models.CharField(max_length=50)
-
-    class Meta:
-        db_table = 'taiwan_regions'
-        unique_together = ('city', 'district')
         managed = FORCE_SQLITE
 
 from django.db.models.signals import post_save, post_delete
