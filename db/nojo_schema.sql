@@ -148,8 +148,7 @@ CREATE TABLE `gamesmatches` (
   `booking_status` enum('已佔到/已預約','未佔到/未預約','未確認') NOT NULL DEFAULT '未確認',
   `gender_limit` enum('不限','限男','限女') NOT NULL DEFAULT '不限',
   `game_note` text DEFAULT NULL COMMENT '佔場位置或衣服說明備註',
-  `game_name` varchar(100) NOT NULL COMMENT '比賽名稱',
-  `venue_note` text DEFAULT NULL
+  `game_name` varchar(100) NOT NULL COMMENT '比賽名稱'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
