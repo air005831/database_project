@@ -181,7 +181,10 @@ else:
         }
     }
 
-DATABASE_ROUTERS = ['core.router.DatabaseRouter']
+if os.environ.get('FORCE_SQLITE') == 'True':
+    DATABASE_ROUTERS = []
+else:
+    DATABASE_ROUTERS = ['core.router.DatabaseRouter']
 
 
 
