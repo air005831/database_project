@@ -76,15 +76,11 @@ class VenueSerializer(serializers.ModelSerializer):
     sport_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     court_count = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     
-    # 動態取得經緯度
-    latitude = serializers.DecimalField(source='address.latitude', max_digits=10, decimal_places=8, read_only=True)
-    longitude = serializers.DecimalField(source='address.longitude', max_digits=11, decimal_places=8, read_only=True)
-
     class Meta:
         model = Venue
         fields = (
-            'id', 'name', 'address', 'address_detail', 'opening_hours', 'types', 
-            'facilities', 'latitude', 'longitude',
+            'id', 'name', 'address', 'address_detail', 'opening_hours', 'types',
+            'facilities',
             'city', 'district', 'street_line', 'sport_id', 'court_count'
         )
     # 2. 於 representation 中動態加入 court_count，避免欄位名稱衝突
@@ -92,6 +88,12 @@ class VenueSerializer(serializers.ModelSerializer):
         representation = super().to_representation(instance)
         # 統計關聯的球場數量
         representation['court_count'] = instance.courts.count()
+        # 動態加入場館支援的運動（從所有球場的 sports 聚合）
+        sport_ids = set()
+        for court in instance.courts.prefetch_related('sports').all():
+            for sport in court.sports.all():
+                sport_ids.add(sport.id)
+        representation['sport_ids'] = list(sport_ids)
         # 動態加入讀取的地址欄位，讓前端可以直接讀取 v.city 和 v.district
         if instance.address:
             representation['city'] = instance.address.city

@@ -124,11 +124,12 @@ function Profile() {
             location: newGame.location || newGame.venue_name || '未指定地點',
             description: newGame.description || newGame.game_note || '',
             game_note: newGame.game_note || '',
-            currentWaitlist: newGame.currentWaitlist ?? newGame.current_waitlist ?? 0,
+            currentWaitlist: newGame.currentWaitlist ?? newGame.current_waitlist ?? (newGame.waitlist_ids?.length ?? 0),
             maxWaitlist: newGame.maxWaitlist ?? newGame.max_waitlist ?? 2,
             currentPlayers: newGame.currentPlayers ?? newGame.current_players ?? 0,
             maxPlayers: newGame.maxPlayers ?? newGame.most_players ?? newGame.max_players ?? 6,
-            participants: newGame.participants || [],
+            participants: newGame.participants || (newGame.participant_ids || []).map(uid => ({ id: uid, user_id: uid })),
+            currentWaitlistCount: (newGame.waitlist_ids || []).length,
             time: newGame.time || (newGame.booking_date && newGame.time_slot ? `${newGame.booking_date} ${newGame.time_slot}` : '時間未定'),
           };
         };
@@ -547,13 +548,12 @@ function Profile() {
                           {party.genderLimit && party.genderLimit !== '不限' && (
                             <span className="party-level">{party.genderLimit}</span>
                           )}
-                          {badgeStatusText && (
+                          {isHistoryTab ? (
+                            <span className="party-level" style={{ backgroundColor: '#64748b', color: 'white' }}>已結束</span>
+                          ) : badgeStatusText && (
                             <span className="party-level" style={{ backgroundColor: badgeStatusColor, color: 'white', fontWeight: 'bold' }}>
                               {badgeStatusText}
                             </span>
-                          )}
-                          {isHistoryTab && (
-                            <span className="party-level" style={{ backgroundColor: '#64748b', color: 'white' }}>已結束</span>
                           )}
                         </div>
                         {!isHistoryTab && (
