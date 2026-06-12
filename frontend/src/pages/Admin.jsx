@@ -1982,14 +1982,8 @@ function Admin() {
                         </div>
                       </td>
                       <td style={{ padding: '16px' }}>
-                        <button onClick={() => handleOpenCourtManager(v)} style={{ color: '#0ea5e9', background: 'none', border: 'none', cursor: 'pointer', marginRight: '12px' }} title="管理球場">
-                          <Wrench size={18} />
-                        </button>
-                        <button onClick={() => handleStartEdit(v)} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', marginRight: '12px' }} title="編輯場地">
-                          <Pencil size={18} />
-                        </button>
-                        <button onClick={() => handleDeleteVenue(v.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }} title="刪除場地">
-                          <Trash2 size={18} />
+                        <button onClick={() => handleStartEdit(v)} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 'bold' }} title="編輯場地">
+                          <Pencil size={18} /> 編輯
                         </button>
                       </td>
                     </tr>
@@ -3378,14 +3372,8 @@ function Admin() {
               </div>
             </div>
             <div className="admin-venue-card-actions">
-              <button onClick={() => handleOpenCourtManager(v)} style={{ color: '#0ea5e9', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'bold' }}>
-                <Wrench size={16} /> 球場
-              </button>
               <button onClick={() => handleStartEdit(v)} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'bold' }}>
                 <Pencil size={16} /> 編輯
-              </button>
-              <button onClick={() => handleDeleteVenue(v.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'bold' }}>
-                <Trash2 size={16} /> 刪除
               </button>
             </div>
           </div>
