@@ -262,8 +262,27 @@ function Home() {
     try {
       await gamesApi.createGame(payload);
       setIsModalOpen(false);
+      
+      const cities = Object.keys(dbRegions);
+      const defaultCity = cities.includes('桃園市') ? '桃園市' : (cities[0] || '桃園市');
+      const defaultDist = (dbRegions[defaultCity] && dbRegions[defaultCity].includes('桃園區'))
+        ? '桃園區'
+        : ((dbRegions[defaultCity] && dbRegions[defaultCity][0]) || '桃園區');
+
       setNewParty({ 
-        title: '', type: '籃球', level: '休閒', genderLimit: '不限', city: '桃園市', district: '桃園區', venue: '桃園國民運動中心', description: '', price: '', time: '', duration: '2 小時', minPlayers: 2, maxPlayers: 4 
+        title: '', 
+        type: '籃球', 
+        level: '休閒', 
+        genderLimit: '不限', 
+        city: defaultCity, 
+        district: defaultDist, 
+        venue: '', // 將由 useEffect 自動連動匹配
+        description: '', 
+        price: '', 
+        time: '', 
+        duration: '2 小時', 
+        minPlayers: 2, 
+        maxPlayers: 4 
       });
       fetchData(false);
       showAlert('發起成功！', 'success');
@@ -1051,7 +1070,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (縣市)</label>
                     <select className="form-input" value={newParty.city} onChange={handleCityChange}>
-                      {Object.keys(taiwanRegions).map(city => (
+                      {(Object.keys(dbRegions).length > 0 ? Object.keys(dbRegions) : Object.keys(taiwanRegions)).map(city => (
                         <option key={city} value={city}>{city}</option>
                       ))}
                     </select>
@@ -1059,7 +1078,7 @@ function Home() {
                   <div className="form-group">
                     <label className="form-label">地點 (區域)</label>
                     <select className="form-input" value={newParty.district} onChange={handleDistrictChange}>
-                      {Object.keys(taiwanRegions[newParty.city] || {}).map(dist => (
+                      {(Object.keys(dbRegions).length > 0 ? (dbRegions[newParty.city] || []) : Object.keys(taiwanRegions[newParty.city] || {})).map(dist => (
                         <option key={dist} value={dist}>{dist}</option>
                       ))}
                     </select>
