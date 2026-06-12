@@ -110,6 +110,7 @@ function Admin() {
   const citiesToUse = Object.keys(regionsMap).length > 0 ? regionsMap : TAIWAN_CITIES_DISTRICTS;
   const [courtCounts, setCourtCounts] = useState([{ sport_id: '', count: 1 }]);
   const [isVenueModalOpen, setIsVenueModalOpen] = useState(false);
+  const [venuePage, setVenuePage] = useState(1);
   const [facilitiesList, setFacilitiesList] = useState([]);
   const [openingHoursType, setOpeningHoursType] = useState('same');
   const [sameStart, setSameStart] = useState('08:00');
@@ -241,8 +242,43 @@ function Admin() {
 
   const hasActiveFilter = !!(filterCity || filterDistrict || filterSport);
 
+  // 場地列表分頁計算
+  const VENUES_PER_PAGE = 10;
+  const totalVenuePages = Math.ceil(venues.length / VENUES_PER_PAGE) || 1;
+  const paginatedVenues = venues.slice((venuePage - 1) * VENUES_PER_PAGE, venuePage * VENUES_PER_PAGE);
+
+  const renderVenuePagination = (totalPageCount) => {
+    if (totalPageCount <= 1) return null;
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '24px', padding: '10px 0' }}>
+        <button 
+          type="button"
+          className="btn-outline" 
+          disabled={venuePage === 1} 
+          onClick={() => setVenuePage(prev => Math.max(1, prev - 1))}
+          style={{ padding: '6px 16px', margin: 0, opacity: venuePage === 1 ? 0.5 : 1, cursor: venuePage === 1 ? 'not-allowed' : 'pointer' }}
+        >
+          上一頁
+        </button>
+        <span style={{ fontSize: '14px', fontWeight: '700', color: '#475569' }}>
+          第 {venuePage} / {totalPageCount} 頁
+        </span>
+        <button 
+          type="button"
+          className="btn-outline" 
+          disabled={venuePage === totalPageCount} 
+          onClick={() => setVenuePage(prev => Math.min(totalPageCount, prev + 1))}
+          style={{ padding: '6px 16px', margin: 0, opacity: venuePage === totalPageCount ? 0.5 : 1, cursor: venuePage === totalPageCount ? 'not-allowed' : 'pointer' }}
+        >
+          下一頁
+        </button>
+      </div>
+    );
+  };
+
   // 載入真實場地資料，當篩選條件（縣市/區域/球類）改變時重新向後端抓取
   useEffect(() => {
+    setVenuePage(1);
     const fetchVenues = async () => {
       try {
         const params = {};
@@ -1991,7 +2027,7 @@ function Admin() {
                   </tr>
                 </thead>
                 <tbody>
-                  {venues.map(v => (
+                  {paginatedVenues.map(v => (
                     <tr key={v.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                       <td style={{ padding: '16px', fontWeight: '700' }}>{v.name}</td>
                       <td style={{ padding: '16px' }}>
@@ -2029,6 +2065,7 @@ function Admin() {
                 </tbody>
               </table>
             </div>
+            {renderVenuePagination(totalVenuePages)}
 
 
           </div>
@@ -3383,7 +3420,7 @@ function Admin() {
 
       {/* Cards List */}
       <div>
-        {venues.map(v => (
+        {paginatedVenues.map(v => (
           <div key={v.id} className="admin-venue-card">
             <div className="admin-venue-card-header">
               <h4 className="admin-venue-card-title">{v.name}</h4>
@@ -3415,6 +3452,7 @@ function Admin() {
           </div>
         )}
       </div>
+      {renderVenuePagination(totalVenuePages)}
     </div>
   );
 
