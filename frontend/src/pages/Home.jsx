@@ -82,7 +82,10 @@ function Home() {
       const results = await Promise.allSettled([
         fetchParties(showLoading),
         notificationsApi.getNotifications(),
-        weatherApi.getWeatherAqi(),
+        weatherApi.getWeatherAqi({
+          city: selectedFilterRegion !== 'all' ? selectedFilterRegion : undefined,
+          district: selectedFilterDistrict !== 'all' ? selectedFilterDistrict : undefined
+        }),
         usersApi.getUserProfile(),
         venuesApi.getCourts(),
         adminApi.getSystemAnnouncements()
@@ -377,6 +380,27 @@ function Home() {
       console.error('Lobby fetch regions error:', err);
     });
   }, []);
+
+  useEffect(() => {
+    const fetchSelectedWeather = async () => {
+      try {
+        const params = {};
+        if (selectedFilterRegion && selectedFilterRegion !== 'all') {
+          params.city = selectedFilterRegion;
+        }
+        if (selectedFilterDistrict && selectedFilterDistrict !== 'all') {
+          params.district = selectedFilterDistrict;
+        }
+        const weatherResult = await weatherApi.getWeatherAqi(params);
+        setAqi(weatherResult?.aqi ?? '--');
+        setTemperature(weatherResult?.temperature ?? '--');
+        if (weatherResult?.location) setWeatherLocation(weatherResult.location);
+      } catch (error) {
+        console.error('Fetch weather for selected region error:', error);
+      }
+    };
+    fetchSelectedWeather();
+  }, [selectedFilterRegion, selectedFilterDistrict]);
 
   useEffect(() => {
     if (allVenues.length === 0) return;
@@ -701,9 +725,14 @@ function Home() {
 
       <main className="main-content">
         <div className="content-header">
-          <h2>揪團大廳</h2>
-          <div className="weather-widget">
-            <span>{weatherLocation} {temperature}°C AQI:{aqi}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '16px' }}>
+            <h2 style={{ margin: 0 }}>揪團大廳</h2>
+            <div className="weather-widget" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '6px 16px', borderRadius: '9999px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', fontSize: '13px', fontWeight: '500', color: '#475569', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <CloudSun size={16} color="#7995a5" />
+              <span>{weatherLocation} {temperature}°C</span>
+              <div style={{ width: '1px', height: '14px', backgroundColor: '#cbd5e1' }}></div>
+              <span>AQI: {aqi}</span>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
             <select className="region-select" value={selectedFilterRegion} onChange={e => { setSelectedFilterRegion(e.target.value); setSelectedFilterDistrict('all'); }}>
