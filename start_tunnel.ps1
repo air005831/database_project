@@ -1,149 +1,101 @@
+# UTF-8 Encoding
+try {
+    $BACKEND_PORT = 8088
+    $FRONTEND_PORT = 5173
+    
+    $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    if (-not $ScriptDir) { $ScriptDir = Get-Location }
+    Set-Location $ScriptDir
 
-# 1. Setup Ports
-$BACKEND_PORT = 8088
-$FRONTEND_PORT = 5173
+    Write-Host "Cleaning up old processes..." -ForegroundColor Gray
+    Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
-# ==========================================
-# Cleanup existing processes & ports to avoid conflicts
-# ==========================================
-Write-Host "🧹 Stopping any existing cloudflared processes..." -ForegroundColor Gray
-Stop-Process -Name "cloudflared" -Force -ErrorAction SilentlyContinue
-
-function Free-Port {
-    param([int]$Port)
-    Write-Host "🔍 Checking port $Port..." -ForegroundColor Gray
-    $connections = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
-    if ($connections) {
-        foreach ($conn in $connections) {
-            $pidToKill = $conn.OwningProcess
-            if ($pidToKill -gt 0) {
-                Write-Host "💥 Killing process $pidToKill using port $Port..." -ForegroundColor Yellow
-                Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
-            }
-        }
-        Start-Sleep -Seconds 1
+    # 1. Start Backend
+    Write-Host "Starting Django Backend..." -ForegroundColor Cyan
+    $PYTHON_BIN = "python"
+    if (Test-Path "backend\env\Scripts\python.exe") {
+        $PYTHON_BIN = "$ScriptDir\backend\env\Scripts\python.exe"
     }
-}
+    Start-Process $PYTHON_BIN -ArgumentList "manage.py runserver 0.0.0.0:$BACKEND_PORT" -WorkingDirectory "$ScriptDir\backend" -NoNewWindow
 
-Free-Port $BACKEND_PORT
-Free-Port $FRONTEND_PORT
+    # 2. Start Backend Tunnel
+    Write-Host "Starting Backend Tunnel..." -ForegroundColor Cyan
+    $psi_be = New-Object System.Diagnostics.ProcessStartInfo
+    $psi_be.FileName = "cloudflared"
+    $psi_be.Arguments = "tunnel --url http://127.0.0.1:$BACKEND_PORT"
+    $psi_be.UseShellExecute = $false
+    $psi_be.RedirectStandardError = $true
+    $be_proc = [System.Diagnostics.Process]::Start($psi_be)
 
-# 2. Cleanup old logs
-$BE_LOG = "backend_tunnel.log"
-$FE_LOG = "frontend_tunnel.log"
-if (Test-Path $BE_LOG) { Remove-Item $BE_LOG }
-if (Test-Path $FE_LOG) { Remove-Item $FE_LOG }
-
-# Resolve Python executable
-$PYTHON_BIN = "python"
-if (Test-Path "backend/env/Scripts/python.exe") {
-    $PYTHON_BIN = "backend/env/Scripts/python.exe"
-    Write-Host "📦 Found virtual environment, using: $PYTHON_BIN" -ForegroundColor Gray
-}
-
-Write-Host "🚀 Starting Backend Django..." -ForegroundColor Cyan
-Start-Process $PYTHON_BIN -ArgumentList "backend/run_dev_server.py" -NoNewWindow
-Start-Sleep -Seconds 3
-
-Write-Host "🌐 Starting Cloudflare Tunnel (Backend)..." -ForegroundColor Cyan
-# Using 127.0.0.1 instead of localhost to avoid IPv6 issues on Windows
-$process = Start-Process cloudflared -ArgumentList "tunnel --url http://127.0.0.1:$BACKEND_PORT" -RedirectStandardError $BE_LOG -NoNewWindow -PassThru
-
-# 3. Capture Backend URL
-Write-Host "⏳ Waiting for backend URL generation..." -ForegroundColor Yellow
-$backend_url = ""
-$retry_count = 0
-while (-not $backend_url -and $retry_count -lt 30) {
-    Start-Sleep -Seconds 2
-    if (Test-Path $BE_LOG) {
-        $content = Get-Content $BE_LOG -Raw
-        if ($content -match "(https://[a-zA-Z0-9-]+\.trycloudflare\.com)") {
-            $backend_url = $matches[1]
+    $backend_url = ""
+    $start = Get-Date
+    while (-not $backend_url) {
+        if ($be_proc.HasExited) { throw "Backend tunnel failed to start." }
+        if (((Get-Date) - $start).TotalSeconds -gt 30) { throw "Backend tunnel timeout." }
+        $line = $be_proc.StandardError.ReadLine()
+        if ($null -eq $line) { Start-Sleep -Milliseconds 200; continue }
+        if ($line -match "https://[a-zA-Z0-9-]+\.trycloudflare\.com") {
+            $backend_url = $matches[0]
         }
     }
-    $retry_count++
-}
+    Write-Host "Backend URL: $backend_url" -ForegroundColor Green
 
-if (-not $backend_url) {
-    Write-Host "❌ Failed to capture Backend URL. Please check $BE_LOG" -ForegroundColor Red
-    exit
-}
-Write-Host "✅ Backend URL: $backend_url" -ForegroundColor Green
+    # 3. Start Frontend
+    Write-Host "Starting Frontend Vite..." -ForegroundColor Cyan
+    $env:VITE_API_BASE_URL = "$backend_url/api/"
+    Start-Process "npm.cmd" -WorkingDirectory "$ScriptDir\frontend" -ArgumentList "run dev -- --port $FRONTEND_PORT --host 127.0.0.1" -NoNewWindow
 
-# 4. Update Frontend Environment Variables
-Write-Host "📝 Updating frontend configuration..." -ForegroundColor Cyan
-$env_content = "VITE_API_BASE_URL=$backend_url/api/"
-Set-Content -Path "frontend/.env.local" -Value $env_content
+    # 4. Start Frontend Tunnel
+    Write-Host "Starting Frontend Tunnel..." -ForegroundColor Cyan
+    $psi_fe = New-Object System.Diagnostics.ProcessStartInfo
+    $psi_fe.FileName = "cloudflared"
+    $psi_fe.Arguments = "tunnel --url http://127.0.0.1:$FRONTEND_PORT"
+    $psi_fe.UseShellExecute = $false
+    $psi_fe.RedirectStandardError = $true
+    $fe_proc = [System.Diagnostics.Process]::Start($psi_fe)
 
-# 5. Start Frontend
-Write-Host "🚀 Starting Frontend Vite..." -ForegroundColor Cyan
-# Force Vite to bind to 127.0.0.1 for tunnel stability
-Start-Process npm.cmd -WorkingDirectory "$PSScriptRoot/frontend" -ArgumentList "run dev -- --port $FRONTEND_PORT --host 127.0.0.1" -NoNewWindow
-Start-Sleep -Seconds 5
-
-Write-Host "🌐 Starting Cloudflare Tunnel (Frontend)..." -ForegroundColor Cyan
-Start-Process cloudflared -ArgumentList "tunnel --url http://127.0.0.1:$FRONTEND_PORT" -RedirectStandardError $FE_LOG -NoNewWindow
-
-# 6. Capture Frontend URL
-Write-Host "⏳ Waiting for frontend URL generation..." -ForegroundColor Yellow
-$frontend_url = ""
-$retry_count = 0
-while (-not $frontend_url -and $retry_count -lt 30) {
-    Start-Sleep -Seconds 2
-    if (Test-Path $FE_LOG) {
-        $content = Get-Content $FE_LOG -Raw
-        if ($content -match "(https://[a-zA-Z0-9-]+\.trycloudflare\.com)") {
-            $frontend_url = $matches[1]
+    $frontend_url = ""
+    $start = Get-Date
+    while (-not $frontend_url) {
+        if ($fe_proc.HasExited) { throw "Frontend tunnel failed to start." }
+        if (((Get-Date) - $start).TotalSeconds -gt 30) { throw "Frontend tunnel timeout." }
+        $line = $fe_proc.StandardError.ReadLine()
+        if ($null -eq $line) { Start-Sleep -Milliseconds 200; continue }
+        if ($line -match "https://[a-zA-Z0-9-]+\.trycloudflare\.com") {
+            $frontend_url = $matches[0]
         }
     }
-    $retry_count++
-}
+    Write-Host "Frontend URL: $frontend_url/nojo/" -ForegroundColor Green
 
-if (-not $frontend_url) {
-    Write-Host "❌ Failed to capture Frontend URL. Please check $FE_LOG" -ForegroundColor Red
-    exit
-}
-
-# 7. Show QR Code and Results in a separate popup window
-Write-Host "==========================================" -ForegroundColor Magenta
-Write-Host "🎉 Deployment Successful!" -ForegroundColor Green
-Write-Host "Backend API: $backend_url/api/"
-Write-Host "Frontend URL: $frontend_url/nojo/" -ForegroundColor White
-Write-Host "==========================================" -ForegroundColor Magenta
-Write-Host ""
-Write-Host "✨ Opening a separate window for Frontend URL & QR Code..." -ForegroundColor Cyan
-
-$popupScript = @"
+    # Success Popup with QR Code
+    $finalUrl = "$frontend_url/nojo/"
+    $qrUrl = "https://qrenco.de/$finalUrl"
+    
+    $popupCmd = @"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Clear-Host
-Write-Host "==========================================" -ForegroundColor Magenta
-Write-Host "🎉 Deployment Successful!" -ForegroundColor Green
-Write-Host "Backend API: $backend_url/api/"
-Write-Host "Frontend URL: $frontend_url/nojo/" -ForegroundColor White
-Write-Host "==========================================" -ForegroundColor Magenta
-Write-Host ""
-Write-Host "📱 Scan the QR Code below with your phone:" -ForegroundColor Yellow
+Write-Host '==========================================' -FG Magenta
+Write-Host 'SUCCESS! Project is now public.' -FG Green
+Write-Host 'Backend API: $backend_url/api/'
+Write-Host 'Frontend URL: $finalUrl' -FG White -BG Blue
+Write-Host '==========================================' -FG Magenta
+Write-Host 'Scan QR Code with your phone:' -FG Yellow
 try {
-    `$response = Invoke-WebRequest -Uri "https://qrenco.de/$frontend_url/nojo/" -UserAgent "curl/7.54.0" -UseBasicParsing -TimeoutSec 10
-    if (`$response.Content) {
-        Write-Host `$response.Content
-    } else {
-        Write-Host "QR Code service returned empty content." -ForegroundColor Gray
-    }
+    `$qr = Invoke-WebRequest -Uri '$qrUrl' -UserAgent 'curl/7.54.0' -UseBasicParsing -TimeoutSec 10
+    Write-Host `$qr.Content
 } catch {
-    Write-Host "Could not fetch QR Code from qrenco.de." -ForegroundColor Gray
-    Write-Host "Please visit the URL manually: $frontend_url/nojo/" -ForegroundColor Gray
+    Write-Host 'Failed to load QR Code.'
 }
-Write-Host ""
-Write-Host "Press Enter to close this window..." -ForegroundColor Gray
-Read-Host
+Read-Host 'Press Enter to close this window'
 "@
+    $bytes = [System.Text.Encoding]::Unicode.GetBytes($popupCmd)
+    $encoded = [Convert]::ToBase64String($bytes)
+    Start-Process powershell.exe -ArgumentList "-NoProfile", "-ExecutionPolicy Bypass", "-EncodedCommand", $encoded
 
-$encodedScript = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($popupScript))
-Start-Process powershell.exe -ArgumentList "-NoProfile", "-ExecutionPolicy Bypass", "-EncodedCommand", $encodedScript
+    Write-Host "`nRunning... Press Ctrl+C to stop." -ForegroundColor Yellow
+    while ($true) { Start-Sleep -Seconds 1 }
 
-Write-Host ""
-Write-Host "Press Ctrl+C to stop this script. Keep this main window open to keep the servers and tunnels running." -ForegroundColor Gray
-
-# Keep script running to show logs
-Get-Content $FE_LOG -Wait
+} catch {
+    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    Read-Host "Press Enter to exit"
+}
