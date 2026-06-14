@@ -3,6 +3,36 @@ import { Link, useNavigate } from 'react-router-dom';
 import authApi from '../api/auth';
 import '../App.css';
 
+const extractErrorMessage = (error, defaultMsg) => {
+  if (error.response && error.response.data) {
+    const data = error.response.data;
+    if (typeof data === 'string') return data;
+    if (data.detail) return data.detail;
+    if (data.error) return data.error;
+    if (data.non_field_errors) {
+      return Array.isArray(data.non_field_errors) ? data.non_field_errors.join('\n') : data.non_field_errors;
+    }
+    if (typeof data === 'object') {
+      const messages = [];
+      const fieldMap = {
+        email: '電子信箱',
+        password: '密碼',
+        name: '暱稱'
+      };
+      for (const [key, value] of Object.entries(data)) {
+        const fieldName = fieldMap[key] || key;
+        const valStr = Array.isArray(value) ? value.flat().join(', ') : String(value);
+        let displayStr = valStr;
+        if (valStr === 'Email already exists.') displayStr = '該信箱已被註冊';
+        else if (valStr === 'This field is required.') displayStr = '此欄位為必填';
+        messages.push(`${fieldName}: ${displayStr}`);
+      }
+      if (messages.length > 0) return messages.join('\n');
+    }
+  }
+  return error.message || defaultMsg;
+};
+
 function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,7 +69,7 @@ function Login() {
       navigate('/home');
     } catch (error) {
       console.error('Login error:', error);
-      const errorMsg = error.response?.data?.detail || '登入失敗，請檢查帳號密碼或確認伺服器狀態！';
+      const errorMsg = extractErrorMessage(error, '登入失敗，請檢查帳號密碼或確認伺服器狀態！');
       alert(errorMsg);
     } finally {
       setIsLoading(false);

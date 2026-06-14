@@ -3,6 +3,38 @@ import { Link, useNavigate } from 'react-router-dom';
 import authApi from '../api/auth';
 import '../App.css';
 
+const extractErrorMessage = (error, defaultMsg) => {
+  if (error.response && error.response.data) {
+    const data = error.response.data;
+    if (typeof data === 'string') return data;
+    if (data.detail) return data.detail;
+    if (data.error) return data.error;
+    if (data.non_field_errors) {
+      return Array.isArray(data.non_field_errors) ? data.non_field_errors.join('\n') : data.non_field_errors;
+    }
+    if (typeof data === 'object') {
+      const messages = [];
+      const fieldMap = {
+        email: '電子信箱',
+        password: '密碼',
+        name: '暱稱'
+      };
+      for (const [key, value] of Object.entries(data)) {
+        const fieldName = fieldMap[key] || key;
+        const valStr = Array.isArray(value) ? value.flat().join(', ') : String(value);
+        let displayStr = valStr;
+        if (valStr === 'Email already exists.') displayStr = '該信箱已被註冊';
+        else if (valStr === 'This field is required.') displayStr = '此欄位為必填';
+        else if (valStr === 'Invalid email format.') displayStr = '格式錯誤';
+        else if (valStr === 'name, email and password are required.') displayStr = '欄位不能為空';
+        messages.push(`${fieldName}: ${displayStr}`);
+      }
+      if (messages.length > 0) return messages.join('\n');
+    }
+  }
+  return error.message || defaultMsg;
+};
+
 function Register() {
   const [nickname, setNickname] = useState('');
   const [email, setEmail] = useState('');
@@ -59,26 +91,7 @@ function Register() {
       }, 2000);
     } catch (error) {
       console.error('Register error:', error);
-      // 解析後端錯誤訊息
-      const errData = error.response?.data;
-      let msg = '請確認信箱是否已被使用或伺服器狀態！';
-      if (errData) {
-        msg = errData.detail
-          || errData.email?.[0]
-          || errData.name?.[0]
-          || errData.password?.[0]
-          || Object.values(errData).flat().join('、')
-          || '註冊失敗，請稍後再試。';
-        
-        // 將特定的英文錯誤翻譯為友善的中文提示
-        if (msg === 'Email already exists.') {
-          msg = '此電子信箱已被註冊使用！';
-        } else if (msg === 'Invalid email format.') {
-          msg = '電子信箱格式錯誤！';
-        } else if (msg === 'name, email and password are required.') {
-          msg = '暱稱、電子信箱與密碼皆為必填！';
-        }
-      }
+      const msg = extractErrorMessage(error, '請確認信箱是否已被使用或伺服器狀態！');
       setModal({ show: true, title: '註冊失敗', message: msg, type: 'error' });
     } finally {
       setIsLoading(false);

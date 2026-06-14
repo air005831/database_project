@@ -4,6 +4,44 @@ import { HelpCircle, X } from 'lucide-react';
 import usersApi from '../api/users';
 import '../App.css';
 
+const extractErrorMessage = (error, defaultMsg) => {
+  if (error.response && error.response.data) {
+    const data = error.response.data;
+    if (typeof data === 'string') return data;
+    if (data.detail) return data.detail;
+    if (data.error) return data.error;
+    if (data.duplicates) {
+      return Object.values(data.duplicates).join('\n');
+    }
+    if (data.non_field_errors) {
+      return Array.isArray(data.non_field_errors) ? data.non_field_errors.join('\n') : data.non_field_errors;
+    }
+    if (typeof data === 'object') {
+      const messages = [];
+      const fieldMap = {
+        phone: '手機號碼',
+        gender: '性別',
+        birthday: '生日',
+        line_id: 'Line ID',
+        instagram: 'Instagram ID',
+        bio: '個人簡介',
+        avatar: '頭像',
+        levels: '運動能力'
+      };
+      for (const [key, value] of Object.entries(data)) {
+        const fieldName = fieldMap[key] || key;
+        const valStr = Array.isArray(value) ? value.flat().join(', ') : String(value);
+        let displayStr = valStr;
+        if (valStr === 'This field is required.') displayStr = '此欄位為必填';
+        else if (valStr === 'Invalid phone number format.') displayStr = '手機號碼格式錯誤';
+        messages.push(`${fieldName}: ${displayStr}`);
+      }
+      if (messages.length > 0) return messages.join('\n');
+    }
+  }
+  return error.message || defaultMsg;
+};
+
 function SetupProfile() {
   const [levels, setLevels] = useState({
     '籃球': 'C',
@@ -74,16 +112,7 @@ function SetupProfile() {
       }, 2000);
     } catch (error) {
       console.error('Setup profile error:', error);
-      let errorMsg = '檔案設定失敗，請稍後再試！';
-      if (error.response && error.response.data) {
-        const data = error.response.data;
-        if (data.duplicates) {
-          const dupMsgs = Object.values(data.duplicates).join('\n');
-          errorMsg = `設定失敗：\n${dupMsgs}`;
-        } else if (data.detail) {
-          errorMsg = `設定失敗：${data.detail}`;
-        }
-      }
+      const errorMsg = extractErrorMessage(error, '檔案設定失敗，請稍後再試！');
       setModal({ show: true, title: '設定失敗', message: errorMsg, type: 'error' });
     } finally {
       setIsLoading(false);
