@@ -11,17 +11,14 @@
 我們對專案的結構進行了整理，並撰寫了完整的最新技術文檔：
 
 1. 🗄️ **[資料庫設計文件 (Database Design)](doc/database_design.md)**
-   * 提供最新 20 張資料表的 Mermaid ERD 關聯圖。
-   * 詳細列明每個欄位的資料型態、主外鍵、索引設計與外鍵級聯（Cascade）聯動機制。
+   - 提供最新 20 張資料表的 Mermaid ERD 關聯圖。
+   - 詳細列明每個欄位的資料型態、主外鍵、索引設計與外鍵級聯（Cascade）聯動機制。
 2. 🔌 **[前後端 API 規格書 V1.5 (API Specification)](doc/api_specification.md)**
-   * 定義 `/api` 下的所有 RESTful API 端點（使用者個人檔案、球局開房、候補加一、檢舉扣分與系統公告）。
-   * 提供詳細的參數說明與成功/錯誤 JSON 回傳格式。
+   - 定義 `/api` 下的所有 RESTful API 端點（使用者個人檔案、球局開房、候補加一、檢舉扣分與系統公告）。
+   - 提供詳細的參數說明與成功/錯誤 JSON 回傳格式。
 3. 🛠️ **[開發與執行指南 (Development & Run Guide)](doc/development_guide.md)**
-   * 詳述後端 Django 與前端 Vite 本地環境建置步驟。
-   * 提供資料庫遷移、SQL 備份匯入及單元與整合測試執行指令。
-4. 📊 **[整體專案報告 (Project Report)](doc/project_report.md)**
-   * 綜述專案的解決痛點與前後端全景技術架構。
-   * 詳細剖析系統內部實際運行的 6 大核心演算法與業務機制（如拉取式信用分恢復、單表時間戳候補遞補、快速配對評分與生命週期定時流局監控）。
+   - 詳述後端 Django 與前端 Vite 本地環境建置步驟。
+   - 提供資料庫遷移、SQL 備份匯入及單元與整合測試執行指令。
 
 ---
 
@@ -59,6 +56,6 @@ database_project/
 1. 請確保本地已安裝 **Node.js** (v18+) 及 **Python** (3.10+)。
 2. 在 Windows 系統下，雙擊根目錄下的 `start_dev.bat` 或在 PowerShell 中執行 `.\start_dev.ps1`。
 3. 腳本將在新視窗中分別啟動：
-   * **前端網頁** (Vite): `http://localhost:5173/`
-   * **後端 API 與管理後台** (Django): `http://127.0.0.1:8000/`
+   - **前端網頁** (Vite): `http://localhost:5173/`
+   - **後端 API 與管理後台** (Django): `http://127.0.0.1:8000/`
 4. 如需更詳細的配置（如資料庫匯入、遷移及測試指令），請參閱 **[開發與執行指南](doc/development_guide.md)**。

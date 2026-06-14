@@ -40,13 +40,8 @@ function Home() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
-  const [feedbackTypes, setFeedbackTypes] = useState([
-    { id: 1, name: 'Bug 回報 (系統出錯)' },
-    { id: 2, name: '功能建議 (想要更多)' },
-    { id: 3, name: '場地/活動問題' },
-    { id: 4, name: '其他' }
-  ]);
-  const [feedback, setFeedback] = useState({ type: 'Bug 回報 (系統出錯)', content: '' });
+  const [feedbackTypes, setFeedbackTypes] = useState([]);
+  const [feedback, setFeedback] = useState({ type: '', content: '' });
   const [selectedFilterRegion, setSelectedFilterRegion] = useState('all');
   const [selectedFilterDistrict, setSelectedFilterDistrict] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('全部');
@@ -88,7 +83,8 @@ function Home() {
         }),
         usersApi.getUserProfile(),
         venuesApi.getCourts(),
-        adminApi.getSystemAnnouncements()
+        adminApi.getSystemAnnouncements(),
+        adminApi.getFeedbackTypes()
       ]);
       
       const notificationsResult = results[1].status === 'fulfilled' ? results[1].value : [];
@@ -96,6 +92,7 @@ function Home() {
       const userProfileResult = results[3].status === 'fulfilled' ? results[3].value : null;
       const venuesResult = results[4].status === 'fulfilled' ? results[4].value : [];
       const announcementsResult = results[5]?.status === 'fulfilled' ? results[5].value : [];
+      const feedbackTypesResult = results[6]?.status === 'fulfilled' ? results[6].value : [];
       
       const rawAnnouncements = Array.isArray(announcementsResult) ? announcementsResult : (announcementsResult.results || []);
       const mappedAnnouncements = rawAnnouncements.map(a => {
@@ -114,6 +111,12 @@ function Home() {
         };
       });
       setSystemAnnouncements(mappedAnnouncements);
+      
+      const ftData = Array.isArray(feedbackTypesResult) ? feedbackTypesResult : (feedbackTypesResult.results || []);
+      setFeedbackTypes(ftData);
+      if (ftData.length > 0) {
+        setFeedback(prev => (prev.type ? prev : { ...prev, type: ftData[0].id }));
+      }
       
       if (userProfileResult) {
         setUserProfile(userProfileResult);
@@ -185,7 +188,7 @@ function Home() {
       await adminApi.submitFeedback(feedback);
       showAlert('感謝您的回饋！管理員將會盡快查看。', 'success');
       setIsFeedbackOpen(false);
-      setFeedback({ type: feedbackTypes[0]?.name || 'Bug 回報 (系統出錯)', content: '' });
+      setFeedback({ type: feedbackTypes[0]?.id || '', content: '' });
     } catch (error) {
       console.error('Feedback error:', error);
       showAlert('送出失敗，請稍後再試。');
@@ -1169,9 +1172,9 @@ function Home() {
             <form onSubmit={handleSendFeedback}>
               <div className="form-group">
                 <label className="form-label">回饋類型</label>
-                <select className="form-input" value={feedback.type} onChange={e => setFeedback({...feedback, type: e.target.value})}>
+                <select className="form-input" value={feedback.type} onChange={e => setFeedback({...feedback, type: Number(e.target.value)})}>
                   {feedbackTypes.map(t => (
-                    <option key={t.id} value={t.name}>{t.name}</option>
+                    <option key={t.id} value={t.id}>{t.name}</option>
                   ))}
                 </select>
               </div>

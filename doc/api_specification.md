@@ -458,8 +458,34 @@
 ---
 
 ### 2. 使用者系統回饋 (Feedback)
+* **獲取回饋類型清單：** `GET /api/feedback-types`
+  - 成功回傳範例：
+    ```json
+    [
+      { "id": 1, "name": "功能建議 (想要更多)" },
+      { "id": 2, "name": "Bug 回報 (系統出錯)" },
+      { "id": 3, "name": "其他" },
+      { "id": 4, "name": "場地/活動問題" }
+    ]
+    ```
+
 * **提交回饋：** `POST /api/feedback`
-  - 參數：`{"type": "建議", "content": "希望場地篩選能更迅速"}`
+  - 參數：`{"type": 1, "content": "希望場地篩選能更迅速"}` (其中 `type` 為回饋類型 ID)
+  - 成功回傳範例：
+    ```json
+    {
+      "id": 5,
+      "user": 50,
+      "user_name": "王小明",
+      "type": 1,
+      "type_name": "功能建議 (想要更多)",
+      "content": "希望場地篩選能更迅速",
+      "is_handled": false,
+      "admin_reply": null,
+      "created_at": "2026-06-14T18:00:00.000000Z"
+    }
+    ```
+
 * **管理員回覆與結案 (Admin Only)：** `PUT /api/admin/feedbacks/{id}/handle`
   - 參數：`{"admin_reply": "感謝回報，我們已優化篩選響應時間。"}`
   - 成功提交後，會自動對該回饋之使用者推送通知：「您的回饋已有管理員回覆！」並將狀態變更為 `is_handled = true`。

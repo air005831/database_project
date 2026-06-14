@@ -2355,10 +2355,10 @@ function Admin() {
                       fontWeight: '700', 
                       padding: '4px 10px', 
                       borderRadius: '6px',
-                      backgroundColor: f.type === '錯誤' ? '#fee2e2' : (f.type === '場地' ? '#fef3c7' : '#e0f2fe'),
-                      color: f.type === '錯誤' ? '#ef4444' : (f.type === '場地' ? '#d97706' : '#0284c7')
+                      backgroundColor: (f.type_name && (f.type_name.includes('Bug') || f.type_name.includes('錯誤'))) ? '#fee2e2' : ((f.type_name && (f.type_name.includes('場地') || f.type_name.includes('活動'))) ? '#fef3c7' : '#e0f2fe'),
+                      color: (f.type_name && (f.type_name.includes('Bug') || f.type_name.includes('錯誤'))) ? '#ef4444' : ((f.type_name && (f.type_name.includes('場地') || f.type_name.includes('活動'))) ? '#d97706' : '#0284c7')
                     }}>
-                      {f.type}
+                      {f.type_name || f.type}
                     </span>
                   </div>
                   
@@ -3766,10 +3766,10 @@ function Admin() {
                 fontWeight: '700', 
                 padding: '2px 6px', 
                 borderRadius: '4px',
-                backgroundColor: f.type === '錯誤' ? '#fee2e2' : (f.type === '場地' ? '#fef3c7' : '#e0f2fe'),
-                color: f.type === '錯誤' ? '#ef4444' : (f.type === '場地' ? '#d97706' : '#0284c7')
+                backgroundColor: (f.type_name && (f.type_name.includes('Bug') || f.type_name.includes('錯誤'))) ? '#fee2e2' : ((f.type_name && (f.type_name.includes('場地') || f.type_name.includes('活動'))) ? '#fef3c7' : '#e0f2fe'),
+                color: (f.type_name && (f.type_name.includes('Bug') || f.type_name.includes('錯誤'))) ? '#ef4444' : ((f.type_name && (f.type_name.includes('場地') || f.type_name.includes('活動'))) ? '#d97706' : '#0284c7')
               }}>
-                {f.type}
+                {f.type_name || f.type}
               </span>
             </div>
             

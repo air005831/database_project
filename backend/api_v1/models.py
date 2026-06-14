@@ -414,7 +414,7 @@ class FeedbackType(models.Model):
 class Feedback(models.Model):
     id = models.AutoField(primary_key=True, db_column='feedback_id')
     user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='user_id', related_name='feedbacks')
-    type = models.CharField(max_length=50, default='建議')
+    type = models.ForeignKey(FeedbackType, on_delete=models.PROTECT, db_column='feedback_type_id', related_name='feedbacks')
     content = models.TextField()
     is_handled = models.BooleanField(default=False)
     admin_reply = models.TextField(null=True, blank=True)

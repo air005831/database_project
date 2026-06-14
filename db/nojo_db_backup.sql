@@ -555,7 +555,7 @@ INSERT INTO `facilities` (`facility_id`, `name`) VALUES
 CREATE TABLE `feedbacks` (
   `feedback_id` int(11) NOT NULL,
   `user_id` int(11) DEFAULT NULL,
-  `type` varchar(50) NOT NULL,
+  `feedback_type_id` int(11) NOT NULL DEFAULT 3,
   `content` text NOT NULL,
   `is_handled` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` datetime(6) NOT NULL,
@@ -566,16 +566,16 @@ CREATE TABLE `feedbacks` (
 -- 傾印資料表的資料 `feedbacks`
 --
 
-INSERT INTO `feedbacks` (`feedback_id`, `user_id`, `type`, `content`, `is_handled`, `created_at`, `admin_reply`) VALUES
-(5, 50, '建議', '可以加個推薦功能', 1, '2026-06-08 23:19:21.005850', '再說'),
-(6, 49, '其他', '太屌啦', 0, '2026-06-09 00:56:56.570907', NULL),
-(7, 94, '建議', '林明和你超強超帥', 1, '2026-06-09 05:27:23.667445', '👍讚讚讚🥹🥹🥹🥹'),
-(8, 92, '建議', '哈嘍', 1, '2026-06-09 06:17:41.897660', 'hi'),
-(9, 342, '錯誤', 'Yp怎麼那麼帥', 0, '2026-06-09 07:30:59.664489', NULL),
-(10, 352, '建議', '憨憨', 0, '2026-06-09 08:50:22.157289', NULL),
-(11, 352, '建議', '6767676767', 0, '2026-06-09 08:53:47.693717', NULL),
-(12, 353, '建議', '檢舉', 0, '2026-06-09 08:55:07.717919', NULL),
-(13, 345, '場地', '下大雨 屋頂漏水', 0, '2026-06-09 08:57:56.518946', NULL);
+INSERT INTO `feedbacks` (`feedback_id`, `user_id`, `feedback_type_id`, `content`, `is_handled`, `created_at`, `admin_reply`) VALUES
+(5, 50, 1, '可以加個推薦功能', 1, '2026-06-08 23:19:21.005850', '再說'),
+(6, 49, 3, '太屌啦', 0, '2026-06-09 00:56:56.570907', NULL),
+(7, 94, 1, '林明和你超強超帥', 1, '2026-06-09 05:27:23.667445', '👍讚讚讚🥹🥹🥹🥹'),
+(8, 92, 1, '哈嘍', 1, '2026-06-09 06:17:41.897660', 'hi'),
+(9, 342, 2, 'Yp怎麼那麼帥', 0, '2026-06-09 07:30:59.664489', NULL),
+(10, 352, 1, '憨憨', 0, '2026-06-09 08:50:22.157289', NULL),
+(11, 352, 1, '6767676767', 0, '2026-06-09 08:53:47.693717', NULL),
+(12, 353, 1, '檢舉', 0, '2026-06-09 08:55:07.717919', NULL),
+(13, 345, 4, '下大雨 屋頂漏水', 0, '2026-06-09 08:57:56.518946', NULL);
 
 -- --------------------------------------------------------
 
@@ -593,9 +593,10 @@ CREATE TABLE `feedback_types` (
 --
 
 INSERT INTO `feedback_types` (`id`, `name`) VALUES
+(1, '功能建議 (想要更多)'),
+(2, 'Bug 回報 (系統出錯)'),
 (3, '其他'),
-(2, '問題回報'),
-(1, '建議');
+(4, '場地/活動問題');
 
 -- --------------------------------------------------------
 
@@ -2175,7 +2176,8 @@ ALTER TABLE `facilities`
 --
 ALTER TABLE `feedbacks`
   ADD PRIMARY KEY (`feedback_id`),
-  ADD KEY `feedbacks_user_id_fk` (`user_id`);
+  ADD KEY `feedbacks_user_id_fk` (`user_id`),
+  ADD KEY `feedbacks_feedback_type_id_fk` (`feedback_type_id`);
 
 --
 -- 資料表索引 `feedback_types`
@@ -2450,7 +2452,8 @@ ALTER TABLE `court_sports`
 -- 資料表的限制式 `feedbacks`
 --
 ALTER TABLE `feedbacks`
-  ADD CONSTRAINT `feedbacks_user_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE CASCADE;
+  ADD CONSTRAINT `feedbacks_user_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `feedbacks_feedback_type_id_fk` FOREIGN KEY (`feedback_type_id`) REFERENCES `feedback_types` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 --
 -- 資料表的限制式 `gamesmatches`

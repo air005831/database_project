@@ -142,11 +142,15 @@ erDiagram
     feedbacks {
         int feedback_id PK "AUTO_INCREMENT"
         int user_id FK "提交者 ID"
-        varchar type "回饋類型"
+        int feedback_type_id FK "回饋類型 ID"
         text content "內容"
         tinyint is_handled "是否已處理"
         text admin_reply "管理員回覆"
         timestamp created_at "建立時間"
+    }
+    feedback_types {
+        int id PK "AUTO_INCREMENT"
+        varchar name "回饋類型名稱"
     }
     announcements {
         int announcement_id PK "AUTO_INCREMENT"
@@ -190,6 +194,7 @@ erDiagram
     penalty_rules ||--o{ reports : "適用處罰條款"
     users ||--o{ blacklist : "被寫入封鎖名單"
     users ||--o{ feedbacks : "提交回饋"
+    feedback_types ||--o{ feedbacks : "屬於"
     gamesmatches ||--o{ game_bulletins : "發布公佈欄公告"
 ```
 
@@ -446,7 +451,7 @@ erDiagram
 | :--- | :--- | :--- | :--- | :--- |
 | `feedback_id` | `int` | 否 | *AUTO_INCREMENT* | 主鍵 (PK) |
 | `user_id` | `int` | 否 | | 外鍵 (FK) 連接 `users.user_id` (CASCADE) |
-| `type` | `varchar(50)` | 否 | `'建議'` | 類型 |
+| `feedback_type_id` | `int` | 否 | `3` | 外鍵 (FK) 連接 `feedback_types.id` (RESTRICT) |
 | `content` | `text` | 否 | | 內容 |
 | `is_handled` | `tinyint(1)` | 否 | `0` | 是否已處理 |
 | `admin_reply` | `text` | 是 | `NULL` | 管理員回覆內容 |
@@ -477,6 +482,16 @@ erDiagram
 | `title` | `varchar(200)` | 否 | `'公告'` | 標題 |
 | `content` | `text` | 否 | | 內文 |
 | `created_at` | `timestamp` | 否 | *CURRENT_TIMESTAMP* | 建立時間 |
+
+---
+
+### 22. `feedback_types` (回饋類型表)
+* 儲存意見回饋的分類項目。
+
+| 欄位名稱 | 資料型態 | 允許空值 | 預設值 | 備註 / 約束 |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | `int` | 否 | *AUTO_INCREMENT* | 主鍵 (PK) |
+| `name` | `varchar(100)` | 否 | | 類型名稱 (Unique) |
 
 ---
 

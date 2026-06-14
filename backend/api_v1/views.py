@@ -2072,7 +2072,7 @@ class FeedbackViewSet(viewsets.ModelViewSet):
     queryset = Feedback.objects.all().order_by('-created_at')
     serializer_class = FeedbackSerializer
     filter_backends = [filters.SearchFilter]
-    search_fields = ['content', 'type', 'user__name']
+    search_fields = ['content', 'type__name', 'user__name']
 
     def get_permissions(self):
         if self.action == 'create':

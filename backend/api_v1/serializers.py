@@ -952,10 +952,11 @@ class GameBulletinSerializer(serializers.ModelSerializer):
 
 class FeedbackSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source='user.name', read_only=True)
+    type_name = serializers.CharField(source='type.name', read_only=True)
 
     class Meta:
         model = Feedback
-        fields = ('id', 'user', 'user_name', 'type', 'content', 'is_handled', 'admin_reply', 'created_at')
+        fields = ('id', 'user', 'user_name', 'type', 'type_name', 'content', 'is_handled', 'admin_reply', 'created_at')
         read_only_fields = ('id', 'user', 'created_at')
 
 class FeedbackTypeSerializer(serializers.ModelSerializer):
