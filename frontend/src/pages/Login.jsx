@@ -7,10 +7,28 @@ const extractErrorMessage = (error, defaultMsg) => {
   if (error.response && error.response.data) {
     const data = error.response.data;
     if (typeof data === 'string') return data;
-    if (data.detail) return data.detail;
-    if (data.error) return data.error;
+
+    const translationMap = {
+      'Invalid credentials.': '帳號或密碼錯誤！',
+      'Email and password are required.': '電子信箱與密碼皆為必填！',
+      'Email already exists.': '該信箱已被註冊使用！',
+      'Invalid email format.': '電子信箱格式錯誤！',
+      'name, email and password are required.': '暱稱、電子信箱與密碼皆為必填！',
+      'This field is required.': '此欄位為必填。',
+      'Invalid phone number format.': '手機號碼格式不正確！'
+    };
+
+    const translate = (msg) => {
+      if (!msg) return msg;
+      const cleanMsg = String(msg).trim();
+      return translationMap[cleanMsg] || translationMap[cleanMsg.replace(/\.$/, '')] || msg;
+    };
+
+    if (data.detail) return translate(data.detail);
+    if (data.error) return translate(data.error);
     if (data.non_field_errors) {
-      return Array.isArray(data.non_field_errors) ? data.non_field_errors.join('\n') : data.non_field_errors;
+      const err = Array.isArray(data.non_field_errors) ? data.non_field_errors.join('\n') : data.non_field_errors;
+      return translate(err);
     }
     if (typeof data === 'object') {
       const messages = [];
@@ -22,10 +40,7 @@ const extractErrorMessage = (error, defaultMsg) => {
       for (const [key, value] of Object.entries(data)) {
         const fieldName = fieldMap[key] || key;
         const valStr = Array.isArray(value) ? value.flat().join(', ') : String(value);
-        let displayStr = valStr;
-        if (valStr === 'Email already exists.') displayStr = '該信箱已被註冊';
-        else if (valStr === 'This field is required.') displayStr = '此欄位為必填';
-        messages.push(`${fieldName}: ${displayStr}`);
+        messages.push(`${fieldName}: ${translate(valStr)}`);
       }
       if (messages.length > 0) return messages.join('\n');
     }
