@@ -1,16 +1,49 @@
+# Python & Django environment
 **/__pycache__/
 *.pyc
-不揪ㄛ.docx
 .venv/
+backend/env/
+
+# SQLite Databases & Backups
+*.sqlite3
+*.sqlite
 db.sqlite3
 backend/db.sqlite3
-backend/env
+backend/nojo_django_db.sqlite3
+*.root.bak
+*.bak
 
-# Log files and test outputs
+# Logs & Test outputs
 *.log
+logs/
+frontend/logs/
 api_test_output.log
+1st_stage_api_test.log
+bulletin_api_test.log
+api_test_output_v1_4.log
+backend_tunnel.log
+frontend_tunnel.log
 test_output.txt
-backend/db_credentials.txt
 
-scratch
-backend/media/uploads
+# OS & Editor generated files
+.DS_Store
+**/.DS_Store
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Project specific ignores
+不揪ㄛ.docx
+scratch/
+backend/db_credentials.txt
+backend/media/uploads/
+
+# Node.js / Vite Frontend specific ignores
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
