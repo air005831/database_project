@@ -387,13 +387,17 @@ function Admin() {
         const announcementsData = await adminApi.getSystemAnnouncements();
         const rawAnnouncements = Array.isArray(announcementsData) ? announcementsData : (announcementsData.results || []);
         const mappedAnnouncements = rawAnnouncements.map(a => {
-          const photoRegex = /\n\n\[Photos\]\n([^\n]+)/;
-          const match = String(a.content || '').match(photoRegex);
           let cleanContent = a.content || '';
-          let photo = [];
-          if (match) {
-            photo = match[1].split(',').filter(Boolean);
-            cleanContent = cleanContent.replace(photoRegex, '');
+          let photo = Array.isArray(a.photo) ? a.photo.filter(Boolean) : [];
+
+          // Backward compatibility: older announcements may still encode photos in content.
+          if (photo.length === 0) {
+            const photoRegex = /\n\n\[Photos\]\n([^\n]+)/;
+            const match = String(a.content || '').match(photoRegex);
+            if (match) {
+              photo = match[1].split(',').filter(Boolean);
+              cleanContent = cleanContent.replace(photoRegex, '');
+            }
           }
           return {
             id: a.id,
@@ -1175,16 +1179,10 @@ function Admin() {
         finalTitle = `【公告】${newAnnouncement.title}`;
       }
 
-      // 3. 序列化圖片網址到 content 欄位中
-      let finalContent = newAnnouncement.content;
-      if (uploadedUrls.length > 0) {
-        finalContent += `\n\n[Photos]\n${uploadedUrls.join(',')}`;
-      }
-
-      // 4. 建立公告
       const payload = {
         title: finalTitle,
-        content: finalContent
+        content: newAnnouncement.content,
+        photo: uploadedUrls
       };
       const response = await adminApi.createSystemAnnouncement(payload);
       const announcementId = response.id || Date.now();
@@ -1400,15 +1398,10 @@ function Admin() {
         }
       }
 
-      // 序列化圖片網址到 content 欄位中
-      let finalContent = editingAnnouncement.content;
-      if (finalUrls.length > 0) {
-        finalContent += `\n\n[Photos]\n${finalUrls.join(',')}`;
-      }
-
       const payload = {
         title: editingAnnouncement.title,
-        content: finalContent
+        content: editingAnnouncement.content,
+        photo: finalUrls
       };
       await adminApi.updateSystemAnnouncement(editingAnnouncement.id, payload);
       

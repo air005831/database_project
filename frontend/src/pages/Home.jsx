@@ -96,13 +96,17 @@ function Home() {
       
       const rawAnnouncements = Array.isArray(announcementsResult) ? announcementsResult : (announcementsResult.results || []);
       const mappedAnnouncements = rawAnnouncements.map(a => {
-        const photoRegex = /\n\n\[Photos\]\n([^\n]+)/;
-        const match = String(a.content || '').match(photoRegex);
         let cleanContent = a.content || '';
-        let photo = [];
-        if (match) {
-          photo = match[1].split(',').filter(Boolean);
-          cleanContent = cleanContent.replace(photoRegex, '');
+        let photo = Array.isArray(a.photo) ? a.photo.filter(Boolean) : [];
+
+        // Backward compatibility: older announcements may still embed photos in content.
+        if (photo.length === 0) {
+          const photoRegex = /\n\n\[Photos\]\n([^\n]+)/;
+          const match = String(a.content || '').match(photoRegex);
+          if (match) {
+            photo = match[1].split(',').filter(Boolean);
+            cleanContent = cleanContent.replace(photoRegex, '');
+          }
         }
         return {
           ...a,
@@ -1200,6 +1204,18 @@ function Home() {
         <div className="modal-overlay" onClick={() => setSelectedAnnouncement(null)}>
           <div className="modal-content">
             {renderModalContent()}
+            {Array.isArray(selectedAnnouncement.photos) && selectedAnnouncement.photos.length > 0 && (
+              <div style={{ display: 'flex', gap: '10px', marginTop: '18px', flexWrap: 'wrap' }}>
+                {selectedAnnouncement.photos.map((p, idx) => (
+                  <SafeImage
+                    key={idx}
+                    src={p}
+                    alt={`Photo ${idx + 1}`}
+                    style={{ width: '120px', height: '120px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #e2e8f0' }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
